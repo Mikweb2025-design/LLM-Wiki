@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "3d-model-generation": {
+      "source": "eachlabs/skills",
+      "sourceType": "github",
+      "skillPath": "skills/3d-model-generation/SKILL.md",
+      "computedHash": "d015694d42e5361f2aeff8308b84b82b8ce50afc01ef778c8fca76ab2ebf296c"
+    },
+    "blender-mcp": {
+      "source": "vladmdgolam/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/blender-mcp/SKILL.md",
+      "computedHash": "17797f9705a617d44f2db36c29fe4cc73053d9bbcc6cebfc67f230867e827c9c"
+    },
+    "diagram-generator": {
+      "source": "oimiragieo/agent-studio",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/diagram-generator/SKILL.md",
+      "computedHash": "fc6505f61c85feba7764599f60c2525ac06f4d0f6ed3f23eb4f31a2eddd6eee3"
+    }
+  }
+}
