@@ -20,6 +20,8 @@ function DocumentList({ showToast }) {
   const [searchFilter, setSearchFilter] = useState('');
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState('asc');
+  const [selectedFiles, setSelectedFiles] = useState(new Set());
+  const [batchLoading, setBatchLoading] = useState(false);
 
   useEffect(() => {
     fetchDocuments();
@@ -147,6 +149,59 @@ function DocumentList({ showToast }) {
     }
   };
 
+  const toggleSelect = (filename) => {
+    setSelectedFiles(prev => {
+      const next = new Set(prev);
+      if (next.has(filename)) next.delete(filename);
+      else next.add(filename);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedFiles.size === filteredAndSortedDocs.length) {
+      setSelectedFiles(new Set());
+    } else {
+      setSelectedFiles(new Set(filteredAndSortedDocs.map(d => d.filename)));
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedFiles.size === 0) return;
+    if (!confirm(`Eliminare ${selectedFiles.size} documento/i selezionato/i?`)) return;
+    setBatchLoading(true);
+    try {
+      const filenames = Array.from(selectedFiles);
+      const response = await documentsApi.batchDelete(filenames);
+      const data = response.data;
+      showToast(`Eliminati ${data.count} documenti`, 'success');
+      setSelectedFiles(new Set());
+      fetchDocuments();
+    } catch (error) {
+      showToast("Errore durante l'eliminazione multipla", 'error');
+    } finally {
+      setBatchLoading(false);
+    }
+  };
+
+  const handleBatchReindex = async () => {
+    if (selectedFiles.size === 0) return;
+    if (!confirm(`Reindicizzare ${selectedFiles.size} documento/i selezionato/i?`)) return;
+    setBatchLoading(true);
+    try {
+      const filenames = Array.from(selectedFiles);
+      const response = await documentsApi.batchReindex(filenames);
+      const data = response.data;
+      showToast(`Reindicizzati ${data.successes}/${data.total} documenti`, 'success');
+      setSelectedFiles(new Set());
+      fetchDocuments();
+    } catch (error) {
+      showToast("Errore durante la reindicizzazione multipla", 'error');
+    } finally {
+      setBatchLoading(false);
+    }
+  };
+
   const handlePreviewFiles = async () => {
     if (!customDir.trim()) return;
     setLoadingPreview(true);
@@ -265,6 +320,42 @@ function DocumentList({ showToast }) {
           </span>
         </h2>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {selectedFiles.size > 0 && (
+            <>
+              <button
+                onClick={handleBatchReindex}
+                disabled={batchLoading}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: 'rgba(126, 231, 135, 0.1)',
+                  color: 'var(--accent-green)',
+                  border: '1px solid rgba(126, 231, 135, 0.2)',
+                  borderRadius: '10px',
+                  fontSize: '0.85rem',
+                  cursor: batchLoading ? 'not-allowed' : 'pointer',
+                  opacity: batchLoading ? 0.5 : 1,
+                }}
+              >
+                {batchLoading ? '...' : `🔄 Reindicizza (${selectedFiles.size})`}
+              </button>
+              <button
+                onClick={handleBatchDelete}
+                disabled={batchLoading}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: 'rgba(255, 85, 85, 0.1)',
+                  color: '#ff5555',
+                  border: '1px solid rgba(255, 85, 85, 0.2)',
+                  borderRadius: '10px',
+                  fontSize: '0.85rem',
+                  cursor: batchLoading ? 'not-allowed' : 'pointer',
+                  opacity: batchLoading ? 0.5 : 1,
+                }}
+              >
+                {batchLoading ? '...' : `🗑️ Elimina (${selectedFiles.size})`}
+              </button>
+            </>
+          )}
           <button
             onClick={handleReindexAll}
             disabled={reindexAllLoading}
@@ -424,7 +515,28 @@ function DocumentList({ showToast }) {
           <p style={{ fontSize: '0.85rem' }}>Carica file o scansiona la cartella documenti</p>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {/* Select All */}
+          {filteredAndSortedDocs.length > 0 && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              padding: '0.4rem 1rem',
+              borderBottom: '1px solid var(--border-glass)',
+              marginBottom: '0.25rem',
+            }}>
+              <input
+                type="checkbox"
+                checked={selectedFiles.size === filteredAndSortedDocs.length && filteredAndSortedDocs.length > 0}
+                onChange={toggleSelectAll}
+                style={{ accentColor: 'var(--accent-blue)', width: '16px', height: '16px', cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                {selectedFiles.size > 0 ? `${selectedFiles.size} selezionati` : 'Seleziona tutti'}
+              </span>
+            </div>
+          )}
           {filteredAndSortedDocs.map((doc, index) => (
             <div
               key={index}
@@ -449,6 +561,12 @@ function DocumentList({ showToast }) {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, minWidth: 0 }}>
+                <input
+                  type="checkbox"
+                  checked={selectedFiles.has(doc.filename)}
+                  onChange={() => toggleSelect(doc.filename)}
+                  style={{ accentColor: 'var(--accent-blue)', width: '15px', height: '15px', cursor: 'pointer', flexShrink: 0 }}
+                />
                 <span style={{ fontSize: '1.6rem' }}>{getFileIcon(doc.extension)}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{

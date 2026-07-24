@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { statusApi, documentsApi } from '../utils/api';
 
 function Dashboard() {
@@ -6,21 +6,24 @@ function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [documents, setDocuments] = useState([]);
   const [insights, setInsights] = useState('');
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsError, setInsightsError] = useState('');
+  const [activity, setActivity] = useState([]);
 
   useEffect(() => {
     loadData();
-    loadInsights();
   }, []);
 
   const loadData = async () => {
     setLoading(true);
     try {
       // Strategia veloce: /api/documents/stats aggrega tutto lato server (un sola query).
-      // Fallback: vecchia coppia /api/status + /api/documents/ se /stats non c'è (backend vecchio).
+      // Fallback: vecchia coppia /api/status + /api/documents/ se /stats non c'e (backend vecchio).
       try {
-        const [statsRes, statusRes] = await Promise.all([
+        const [statsRes, statusRes, activityRes] = await Promise.all([
           documentsApi.stats(),
           statusApi.get(),
+          documentsApi.activity(10).catch(() => ({ data: { activities: [] } })),
         ]);
         const s = statsRes.data || {};
         setStats({
@@ -28,9 +31,11 @@ function Dashboard() {
           total_documents: s.total_documents,
           total_chunks: s.total_chunks,
           total_size_bytes: s.total_size_bytes,
+          total_words: s.total_words,
           by_extension: s.by_extension,
         });
         setDocuments(s.recent || []);
+        setActivity(activityRes.data?.activities || []);
       } catch (innerErr) {
         // fallback
         const [statusRes, docsRes] = await Promise.all([
@@ -44,17 +49,27 @@ function Dashboard() {
       console.error(e);
     } finally {
       setLoading(false);
+      // Load insights after stats are available (skip if 0 documents)
+      const docCount = stats?.total_documents ?? 0;
+      if (docCount > 0) {
+        loadInsights();
+      }
     }
   };
 
-  const loadInsights = async () => {
+  const loadInsights = useCallback(async () => {
+    setInsightsLoading(true);
+    setInsightsError('');
     try {
       const res = await documentsApi.insights();
       setInsights(res.data.insights || '');
     } catch (e) {
       console.error('Insights error:', e);
+      setInsightsError('Impossibile generare insights. Riprova piu tardi.');
+    } finally {
+      setInsightsLoading(false);
     }
-  };
+  }, []);
 
   const totalSize = useMemo(() =>
     stats?.total_size_bytes != null
@@ -107,7 +122,7 @@ function Dashboard() {
         <StatCard icon="📚" label="Documenti" value={stats?.total_documents || 0} color="blue" />
         <StatCard icon="🧩" label="Chunk Indicizzati" value={stats?.total_chunks || 0} color="purple" />
         <StatCard icon="💾" label="Dimensione Totale" value={formatSize(totalSize)} color="green" />
-        <StatCard icon="🤖" label="Modello Attivo" value={(stats?.current_model?.split('/').pop()?.slice(0, 15) || 'N/A')} color="pink" />
+        <StatCard icon="📝" label="Parole Stimate" value={stats?.total_words?.toLocaleString() || '0'} color="pink" />
       </div>
 
       {/* Charts Row */}
@@ -172,7 +187,36 @@ function Dashboard() {
           }}>
             <span style={{ fontSize: '1.1rem' }}>✨</span> AI Insights
           </h3>
-          {insights ? (
+          {insightsLoading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '150px', gap: '0.75rem' }}>
+              <div style={{
+                width: '32px',
+                height: '32px',
+                border: '3px solid rgba(74, 158, 255, 0.1)',
+                borderTop: '3px solid var(--accent-blue)',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite',
+              }} />
+              <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Analisi in corso...</span>
+            </div>
+          ) : insightsError ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '150px', gap: '0.5rem' }}>
+              <span style={{ color: 'var(--accent-orange)', fontSize: '0.85rem' }}>{insightsError}</span>
+              <button
+                onClick={loadInsights}
+                style={{
+                  marginTop: '0.5rem',
+                  padding: '0.4rem 1rem',
+                  background: 'rgba(74, 158, 255, 0.1)',
+                  color: 'var(--accent-blue)',
+                  border: '1px solid rgba(74, 158, 255, 0.2)',
+                  borderRadius: '8px',
+                  fontSize: '0.8rem',
+                  cursor: 'pointer',
+                }}
+              >Riprova</button>
+            </div>
+          ) : insights ? (
             <div className="prose" style={{ fontSize: '0.85rem', lineHeight: 1.6 }}>
               {insights.split('\n').map((line, i) => (
                 <p key={i} style={{ marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>{line}</p>
@@ -280,6 +324,74 @@ function Dashboard() {
           <QuickAction icon="⚙️" label="Impostazioni" tab="settings" />
         </div>
       </div>
+
+      {/* Activity Timeline */}
+      {activity.length > 0 && (
+        <div className="glass-card" style={{ padding: '1.5rem' }}>
+          <h3 style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: '1.2rem',
+            fontWeight: 600,
+            color: 'var(--text-primary)',
+            marginBottom: '1.25rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+          }}>
+            <span style={{ fontSize: '1.1rem' }}>🕐</span> Attività Recenti
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {activity.slice(0, 8).map((item, idx) => (
+              <div
+                key={item.id || idx}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  padding: '0.6rem 0.8rem',
+                  borderRadius: '10px',
+                  background: 'rgba(255,255,255,0.025)',
+                  animation: `fadeInUp 0.3s ease-out ${idx * 0.05}s backwards`,
+                }}
+              >
+                <span style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  background: item.action?.includes('add') ? 'var(--accent-green)' :
+                              item.action?.includes('remove') ? '#f87171' :
+                              item.action?.includes('chat') ? 'var(--accent-blue)' :
+                              'var(--accent-purple)',
+                  flexShrink: 0,
+                }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{
+                    fontSize: '0.82rem',
+                    color: 'var(--text-primary)',
+                    fontWeight: 500,
+                  }}>{item.action?.replace(/_/g, ' ')}</span>
+                  {item.target && (
+                    <span style={{
+                      fontSize: '0.78rem',
+                      color: 'var(--text-secondary)',
+                      marginLeft: '0.5rem',
+                      fontFamily: 'var(--font-mono)',
+                    }}>{item.target}</span>
+                  )}
+                </div>
+                <span style={{
+                  fontSize: '0.7rem',
+                  color: 'var(--text-secondary)',
+                  fontFamily: 'var(--font-mono)',
+                  flexShrink: 0,
+                }}>
+                  {item.created_at ? new Date(item.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

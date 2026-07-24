@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException
 from app.models.schemas import ChatRequest, ChatResponse
 from app.utils.vector_store import search_documents
-from app.utils.llm_handler import chat_with_llm, list_available_models, check_ionos_connection
+from app.utils.llm_handler import chat_with_llm, list_available_models, check_ionos_connection, check_ollama_connection
 from app.utils.database import save_chat_message, get_chat_history
 from app.config import IONOS_MODEL
 
@@ -56,4 +56,4 @@ async def chat_history():
 async def available_models():
     """Lista modelli disponibili"""
     models = list_available_models()
-    return {"models": models, "current": IONOS_MODEL, "ollama_connected": check_ionos_connection()}
+    return {"models": models, "current": IONOS_MODEL, "ollama_connected": check_ollama_connection()}

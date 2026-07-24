@@ -19,6 +19,7 @@ from app.utils.database import (
     get_all_documents,
     get_document_count,
     is_document_indexed,
+    log_activity,
 )
 
 router = APIRouter(prefix="/api/documents", tags=["documents"], redirect_slashes=False)
@@ -85,6 +86,7 @@ async def upload_document(file: UploadFile = File(...)):
 
     # Salva nel database
     add_document(file.filename, str(file_path), metadata["extension"], file_size)
+    log_activity("upload", file.filename, f"{metadata['extension']} {file_size}B {len(chunks)} chunks")
 
     return UploadResponse(
         filename=file.filename,
@@ -157,6 +159,7 @@ async def scan_directory():
         except Exception as e:
             errors.append(f"{filename}: {str(e)}")
 
+    log_activity("scan", details=f"{new_files} nuovi su {len(files)} totali")
     return ScanResponse(
         scanned_files=len(files),
         new_files=new_files,
@@ -294,57 +297,65 @@ _INSIGHTS_TTL = 600.0  # 10 min — l'LLM call era 13s, troppo per ogni dashboar
 async def get_documents_insights(refresh: bool = False):
     """Genera insights AI sui documenti (cached 10min). `?refresh=1` per forzare."""
     import time as _t
-    from app.utils.vector_store import search_documents
-    from app.utils.llm_handler import chat_with_llm
+    from app.utils.llm_handler import chat_with_llm, check_ollama_connection, USE_IONOS
 
     now = _t.monotonic()
     if not refresh and _INSIGHTS_CACHE["payload"] and (now - _INSIGHTS_CACHE["ts"]) < _INSIGHTS_TTL:
         return _INSIGHTS_CACHE["payload"]
 
+    # Check if at least one LLM is available
+    if not USE_IONOS and not check_ollama_connection():
+        payload = {"insights": "Nessun provider LLM disponibile (IONOS e Ollama offline).", "documents_analyzed": 0, "cached": False}
+        _INSIGHTS_CACHE.update(ts=now, payload=payload)
+        return payload
+
     try:
-        results = search_documents("*", n_results=50)
-        if not results or len(results) == 0:
-            payload = {"insights": "Nessun documento indicizzato", "documents_analyzed": 0, "cached": False}
+        docs = get_all_documents() or []
+        if not docs:
+            payload = {"insights": "Nessun documento indicizzato. Carica dei documenti per generare insights.", "documents_analyzed": 0, "cached": False}
             _INSIGHTS_CACHE.update(ts=now, payload=payload)
             return payload
 
-        combined = "\n\n".join([r.get('content', '')[:500] for r in results[:10]])
+        # Sample up to 5 random documents for insights
+        import random
+        sample_docs = random.sample(docs, min(5, len(docs)))
+
+        # Extract content from sampled documents
+        from app.utils.document_processor import process_document
+        combined_parts = []
+        for doc in sample_docs:
+            try:
+                content = process_document(doc["file_path"])
+                if content and content.strip():
+                    combined_parts.append(f"[{doc['filename']}]\n{content[:2000]}")
+            except Exception:
+                continue
+
+        if not combined_parts:
+            payload = {"insights": "Impossibile estrarre testo dai documenti selezionati.", "documents_analyzed": 0, "cached": False}
+            _INSIGHTS_CACHE.update(ts=now, payload=payload)
+            return payload
+
+        combined = "\n\n---\n\n".join(combined_parts)
         insights = chat_with_llm(
-            "Analizza i seguenti estratti di documenti e fornisci: 1) Temi principali 2) Pattern ricorrenti 3) Suggerimenti di ricerca. Sii conciso.",
+            "Analizza i seguenti estratti di documenti dalla knowledge base wiki. Fornisci: 1) Temi principali 2) Documenti piu' rilevanti 3) Suggerimenti per esplorare la knowledge base. Rispondi in italiano e sii conciso (max 300 parole).",
             [{"content": combined, "metadata": {"source": "multi-doc"}}]
         )
-        payload = {
-            "insights": insights,
-            "documents_analyzed": min(10, len(results)),
-            "cached": False,
-            "generated_at": _t.time(),
-        }
+
+        # Check if LLM returned an error
+        if isinstance(insights, str) and insights.startswith("Errore"):
+            payload = {"insights": insights, "documents_analyzed": 0, "cached": False}
+        else:
+            payload = {
+                "insights": insights,
+                "documents_analyzed": len(combined_parts),
+                "cached": False,
+                "generated_at": _t.time(),
+            }
         _INSIGHTS_CACHE.update(ts=now, payload=payload)
         return payload
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Errore generazione insights: {str(e)}")
-
-
-@router.get("/stats")
-async def get_documents_stats():
-    """Aggregate veloce per Dashboard — niente lista, solo conteggi.
-    Evita di scaricare 399 righe quando servono solo gli aggregati."""
-    from app.utils.vector_store import get_store_stats
-    docs = get_all_documents() or []
-    by_ext: dict = {}
-    total_size = 0
-    for d in docs:
-        ext = (d.get("extension") or ".unknown").lower()
-        by_ext[ext] = by_ext.get(ext, 0) + 1
-        total_size += d.get("size_bytes") or 0
-    by_ext_sorted = sorted(by_ext.items(), key=lambda kv: kv[1], reverse=True)
-    return {
-        "total_documents": len(docs),
-        "total_chunks": get_store_stats().get("total_chunks", 0),
-        "total_size_bytes": total_size,
-        "by_extension": [{"ext": k, "count": v} for k, v in by_ext_sorted],
-        "recent": docs[:8],  # solo gli ultimi 8 per la card "Documenti Recenti"
-    }
 
 
 @router.post("/reindex/{filename}")
@@ -566,11 +577,141 @@ async def list_folder_files(folder_name: str):
     """Lista i file in una cartella monitorizzata"""
     from app.utils.database import get_folders
     from app.utils.document_processor import scan_custom_directory
-    
+
     folders = get_folders()
     folder = next((f for f in folders if f["name"] == folder_name), None)
     if not folder:
         raise HTTPException(status_code=404, detail="Cartella non trovata")
-    
+
     files = scan_custom_directory(folder["path"])
     return {"folder": folder_name, "count": len(files), "files": [os.path.basename(f) for f in files]}
+
+
+@router.delete("/batch")
+async def batch_delete_documents(payload: dict):
+    """Elimina piu' documenti in una volta"""
+    from app.utils.database import log_activity
+    filenames = payload.get("filenames", [])
+    if not filenames:
+        raise HTTPException(status_code=400, detail="Nessun file specificato")
+
+    deleted = []
+    errors = []
+    for fn in filenames:
+        try:
+            doc_id = fn.replace(" ", "_").lower()
+            remove_document_from_store(doc_id)
+            remove_document(fn)
+            file_path = DOCUMENTS_DIR / fn
+            if file_path.exists():
+                os.remove(file_path)
+            deleted.append(fn)
+        except Exception as e:
+            errors.append({"filename": fn, "error": str(e)})
+
+    log_activity("batch_delete", details=f"Eliminati {len(deleted)} documenti")
+    return {"deleted": deleted, "errors": errors, "count": len(deleted)}
+
+
+@router.post("/batch-reindex")
+async def batch_reindex_documents(payload: dict):
+    """Reindicizza piu' documenti in una volta"""
+    from app.utils.document_processor import process_document, get_document_metadata
+    filenames = payload.get("filenames", [])
+    if not filenames:
+        raise HTTPException(status_code=400, detail="Nessun file specificato")
+
+    successes = 0
+    errors = []
+    for fn in filenames:
+        try:
+            file_path = DOCUMENTS_DIR / fn
+            if not file_path.exists():
+                errors.append({"filename": fn, "error": "File non trovato"})
+                continue
+            doc_id = fn.replace(" ", "_").lower()
+            remove_document_from_store(doc_id)
+            content = process_document(str(file_path))
+            if not content or not content.strip():
+                errors.append({"filename": fn, "error": "Nessun testo estratto"})
+                continue
+            metadata = get_document_metadata(str(file_path))
+            add_document_to_store(doc_id, content, metadata)
+            successes += 1
+        except Exception as e:
+            errors.append({"filename": fn, "error": str(e)})
+
+    return {"successes": successes, "errors": errors, "total": len(filenames)}
+
+
+@router.get("/similar/{filename}")
+async def find_similar_documents(filename: str, n_results: int = 5):
+    """Trova documenti simili a quello specificato"""
+    from app.utils.vector_store import search_documents
+    from app.utils.document_processor import process_document
+
+    doc = get_document(filename)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento non trovato")
+
+    try:
+        content = process_document(doc["file_path"])
+        if not content or not content.strip():
+            raise HTTPException(status_code=400, detail="Nessun testo estraibile")
+
+        # Search using first 1000 chars as query
+        query = content[:1000]
+        results = search_documents(query, n_results=n_results + 5)
+
+        # Filter out self and deduplicate
+        seen = {filename}
+        similar = []
+        for r in results:
+            fn = r.get("metadata", {}).get("filename", "")
+            if fn and fn != filename and fn not in seen:
+                seen.add(fn)
+                similar.append({
+                    "filename": fn,
+                    "score": round(r.get("score", 0), 3),
+                    "snippet": r.get("content", "")[:200],
+                })
+            if len(similar) >= n_results:
+                break
+
+        return {"filename": filename, "similar": similar}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore ricerca simili: {str(e)}")
+
+
+@router.get("/activity")
+async def get_activity(limit: int = 20):
+    """Ottiene log delle attivita' recenti"""
+    from app.utils.database import get_activity_log
+    return {"activities": get_activity_log(limit)}
+
+
+@router.get("/stats")
+async def get_documents_stats():
+    """Aggregate veloce per Dashboard — niente lista, solo conteggi.
+    Evita di scaricare 399 righe quando servono solo gli aggregati."""
+    from app.utils.vector_store import get_store_stats
+    from app.utils.database import get_total_size, get_document_count
+    docs = get_all_documents() or []
+    by_ext: dict = {}
+    total_size = 0
+    for d in docs:
+        ext = (d.get("extension") or ".unknown").lower()
+        by_ext[ext] = by_ext.get(ext, 0) + 1
+        total_size += d.get("size_bytes") or 0
+    by_ext_sorted = sorted(by_ext.items(), key=lambda kv: kv[1], reverse=True)
+    total_words = int(total_size / 1024 * 500)  # approx 500 words per 1KB
+    return {
+        "total_documents": len(docs),
+        "total_chunks": get_store_stats().get("total_chunks", 0),
+        "total_size_bytes": total_size,
+        "total_words": total_words,
+        "by_extension": [{"ext": k, "count": v} for k, v in by_ext_sorted],
+        "recent": docs[:8],
+    }

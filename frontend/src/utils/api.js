@@ -24,6 +24,8 @@ export const documentsApi = {
   },
   list: () => api.get('/api/documents/'),
   delete: (filename) => api.delete(`/api/documents/${encodeURIComponent(filename)}`),
+  batchDelete: (filenames) => api.delete('/api/documents/batch', { data: { filenames } }),
+  batchReindex: (filenames) => api.post('/api/documents/batch-reindex', { filenames }),
   scan: () => api.post('/api/documents/scan'),
   scanCustom: (directory) => api.post('/api/documents/scan-custom', { directory }),
   count: () => api.get('/api/documents/count'),
@@ -35,6 +37,8 @@ export const documentsApi = {
   insights: (refresh = false) => api.get(`/api/documents/insights${refresh ? '?refresh=1' : ''}`),
   summary: (filename) => api.get(`/api/documents/summary/${encodeURIComponent(filename)}`),
   stats: () => api.get('/api/documents/stats'),
+  similar: (filename) => api.get(`/api/documents/similar/${encodeURIComponent(filename)}`),
+  activity: (limit = 20) => api.get('/api/documents/activity', { params: { limit } }),
 };
 
 export const statusApi = {
@@ -49,10 +53,9 @@ export const healthApi = {
 };
 
 export const voiceApi = {
-  transcribe: (audioBlob) => {
+  transcribe: (audioBlob, ext = 'webm') => {
     const formData = new FormData();
-    // Invia come audio.webm - il backend convertirà in WAV
-    formData.append('file', audioBlob, 'audio.webm');
+    formData.append('file', audioBlob, `audio.${ext}`);
     return api.post('/api/voice/transcribe', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
