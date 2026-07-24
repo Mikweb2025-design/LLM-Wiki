@@ -74,7 +74,6 @@ def init_db():
         )
     """)
     conn.commit()
-    conn.close()
 
 
 def log_activity(action: str, target: str = None, details: str = None):
