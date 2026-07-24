@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -6,6 +6,7 @@ export default function Folders({ showToast }) {
   const [folders, setFolders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(null);
+  const [scanProgress, setScanProgress] = useState(null);
   const [newFolderPath, setNewFolderPath] = useState('');
   const [newFolderName, setNewFolderName] = useState('');
   const [showHelp, setShowHelp] = useState(false);
@@ -61,16 +62,45 @@ export default function Folders({ showToast }) {
     }
   };
 
+  const pollScanStatus = useCallback((onDone) => {
+    let attempts = 0;
+    const maxAttempts = 600;
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/documents/scan-status`);
+        const s = await res.json();
+        if (s.total_files > 0) {
+          setScanProgress({ processed: s.processed, total: s.total_files, pct: s.progress_pct, newFiles: s.new_files });
+        }
+        if (s.done) {
+          setScanProgress(null);
+          loadFolders();
+          if (s.result) {
+            const r = s.result;
+            if (r.new_files > 0) showToast?.(`Scansione completata: ${r.new_files} nuovi documenti`, 'success');
+            else showToast?.('Scansione completata: nessun nuovo documento', 'info');
+          }
+          onDone();
+          return;
+        }
+      } catch {}
+      attempts++;
+      if (attempts < maxAttempts) setTimeout(poll, 500);
+      else { setScanProgress(null); onDone(); }
+    };
+    poll();
+  }, [showToast]);
+
   const scanFolder = async (name) => {
     setScanning(name);
     try {
       const res = await fetch(`${API_URL}/api/documents/folders/${name}/scan`, { method: 'POST' });
       const data = await res.json();
-      showToast?.(`Trovati ${data.new_files} nuovi documenti`, 'success');
-      loadFolders();
+      showToast?.(`Scansione avviata...`, 'info');
+      pollScanStatus(() => setScanning(null));
     } catch (err) {
-      showToast?.('Errore scansione: ' + err.message, 'error');
-    } finally {
+      if (err.message?.includes('409')) showToast?.('Scansione già in corso', 'warning');
+      else showToast?.('Errore scansione: ' + err.message, 'error');
       setScanning(null);
     }
   };
@@ -264,6 +294,18 @@ export default function Folders({ showToast }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {scanProgress && (
+        <div style={{ marginTop: '1rem', padding: '0.75rem 1.25rem', background: 'var(--bg-glass)', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+            <span>Indicizzazione: {scanProgress.processed}/{scanProgress.total}</span>
+            <span>{scanProgress.pct}% · {scanProgress.newFiles} nuovi</span>
+          </div>
+          <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
+            <div style={{ width: `${scanProgress.pct}%`, height: '100%', background: 'linear-gradient(90deg, #a855f7, #ec4899)', borderRadius: '3px', transition: 'width 0.5s ease' }} />
+          </div>
         </div>
       )}
 

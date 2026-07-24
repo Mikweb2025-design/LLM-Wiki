@@ -1,5 +1,7 @@
 """API Router per Gestione Documenti"""
 import os
+import threading
+import time
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, HTTPException
 
@@ -23,6 +25,50 @@ from app.utils.database import (
 )
 
 router = APIRouter(prefix="/api/documents", tags=["documents"], redirect_slashes=False)
+
+# ---------------------------------------------------------------------------
+# Scan status tracker — il frontend può fare polling dello stato scansione
+# ---------------------------------------------------------------------------
+_scan_status = {
+    "running": False,
+    "type": None,          # "scan" | "scan-custom" | "scan-folder"
+    "started_at": 0.0,
+    "total_files": 0,
+    "processed": 0,
+    "new_files": 0,
+    "errors": [],
+    "done": False,
+    "result": None,
+}
+_scan_lock = threading.Lock()
+
+
+def _run_scan_in_background(scan_fn, scan_type: str):
+    """Esegue una funzione di scansione in un thread separato, aggiornando lo stato."""
+    global _scan_status
+    with _scan_lock:
+        if _scan_status["running"]:
+            return
+        _scan_status.update(
+            running=True, type=scan_type, started_at=time.monotonic(),
+            total_files=0, processed=0, new_files=0, errors=[], done=False, result=None,
+        )
+
+    def _worker():
+        try:
+            result = scan_fn()
+            with _scan_lock:
+                _scan_status["result"] = result
+        except Exception as e:
+            with _scan_lock:
+                _scan_status["errors"].append(str(e))
+        finally:
+            with _scan_lock:
+                _scan_status["running"] = False
+                _scan_status["done"] = True
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
 
 
 @router.post("/upload", response_model=UploadResponse)
@@ -131,41 +177,71 @@ async def delete_document(filename: str):
     return {"status": "deleted", "filename": filename}
 
 
-@router.post("/scan", response_model=ScanResponse)
+@router.post("/scan")
 async def scan_directory():
     """Scansiona cartella documenti e indicizza nuovi file"""
-    files = scan_documents_directory()
-    new_files = 0
-    already_indexed = 0
-    errors = []
+    with _scan_lock:
+        if _scan_status["running"]:
+            raise HTTPException(status_code=409, detail="Scansione già in corso")
 
-    for file_path in files:
-        filename = os.path.basename(file_path)
-        if is_document_indexed(filename):
-            already_indexed += 1
-            continue
-
-        try:
-            content = process_document(file_path)
-            if not content.strip():
-                errors.append(f"{filename}: nessun testo estratto")
+    def _do_scan():
+        files = scan_documents_directory()
+        new_files = 0
+        already_indexed = 0
+        errors = []
+        with _scan_lock:
+            _scan_status["total_files"] = len(files)
+        for file_path in files:
+            filename = os.path.basename(file_path)
+            if is_document_indexed(filename):
+                already_indexed += 1
+                with _scan_lock:
+                    _scan_status["processed"] += 1
                 continue
+            try:
+                content = process_document(file_path)
+                if not content.strip():
+                    errors.append(f"{filename}: nessun testo estratto")
+                    with _scan_lock:
+                        _scan_status["processed"] += 1
+                    continue
+                metadata = get_document_metadata(file_path)
+                doc_id = filename.replace(" ", "_").lower()
+                add_document_to_store(doc_id, content, metadata)
+                add_document(filename, file_path, metadata["extension"], metadata["size_bytes"])
+                new_files += 1
+            except Exception as e:
+                errors.append(f"{filename}: {str(e)}")
+            with _scan_lock:
+                _scan_status["processed"] += 1
+                _scan_status["new_files"] = new_files
+                _scan_status["errors"] = list(errors)
+        log_activity("scan", details=f"{new_files} nuovi su {len(files)} totali")
+        return ScanResponse(
+            scanned_files=len(files),
+            new_files=new_files,
+            already_indexed=already_indexed,
+            errors=errors,
+        )
 
-            metadata = get_document_metadata(file_path)
-            doc_id = filename.replace(" ", "_").lower()
-            add_document_to_store(doc_id, content, metadata)
-            add_document(filename, file_path, metadata["extension"], metadata["size_bytes"])
-            new_files += 1
-        except Exception as e:
-            errors.append(f"{filename}: {str(e)}")
+    _run_scan_in_background(_do_scan, "scan")
+    return {"status": "started", "message": "Scansione avviata in background"}
 
-    log_activity("scan", details=f"{new_files} nuovi su {len(files)} totali")
-    return ScanResponse(
-        scanned_files=len(files),
-        new_files=new_files,
-        already_indexed=already_indexed,
-        errors=errors,
-    )
+
+@router.get("/scan-status")
+async def scan_status():
+    """Stato della scansione in corso (per polling frontend)"""
+    with _scan_lock:
+        s = dict(_scan_status)
+    # Calcola progresso percentuale
+    if s["total_files"] > 0:
+        s["progress_pct"] = round(s["processed"] / s["total_files"] * 100, 1)
+    else:
+        s["progress_pct"] = 0
+    # Se done, il result è un dict del ScanResponse
+    if s["done"] and s["result"] and hasattr(s["result"], "model_dump"):
+        s["result"] = s["result"].model_dump()
+    return s
 
 
 @router.get("/count")
@@ -436,54 +512,65 @@ async def reindex_all_documents():
 @router.post("/scan-custom")
 async def scan_custom_directory_endpoint(payload: dict):
     """Scansiona una cartella personalizzata senza spostare i file"""
-    from app.utils.document_processor import process_document, get_document_metadata, scan_custom_directory
-    from fastapi import HTTPException
-    
+    from app.utils.document_processor import scan_custom_directory
+
     directory_path = payload.get("directory")
     if not directory_path:
         raise HTTPException(status_code=400, detail="Percorso cartella mancante")
-    
+
     try:
         files = scan_custom_directory(directory_path)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Errore scansione: {str(e)}")
-    
-    new_files = 0
-    already_indexed = 0
-    errors = []
-    
-    for file_path in files:
-        filename = os.path.basename(file_path)
-        
-        if is_document_indexed(filename):
-            already_indexed += 1
-            continue
-        
-        try:
-            content = process_document(file_path)
-            if not content or not content.strip():
-                errors.append(f"{filename}: nessun testo estratto")
+
+    with _scan_lock:
+        if _scan_status["running"]:
+            raise HTTPException(status_code=409, detail="Scansione già in corso")
+
+    def _do_scan():
+        new_files = 0
+        already_indexed = 0
+        errors = []
+        with _scan_lock:
+            _scan_status["total_files"] = len(files)
+        for file_path in files:
+            filename = os.path.basename(file_path)
+            if is_document_indexed(filename):
+                already_indexed += 1
+                with _scan_lock:
+                    _scan_status["processed"] += 1
                 continue
-            
-            metadata = get_document_metadata(file_path)
-            doc_id = filename.replace(" ", "_").lower()
-            add_document_to_store(doc_id, content, metadata)
-            add_document(filename, file_path, metadata["extension"], metadata["size_bytes"])
-            new_files += 1
-            
-        except Exception as e:
-            errors.append(f"{filename}: {str(e)}")
-    
-    return {
-        "status": "completed",
-        "scanned_files": len(files),
-        "new_files": new_files,
-        "already_indexed": already_indexed,
-        "errors": errors,
-        "message": f"Aggiunti {new_files} nuovi documenti. {already_indexed} già presenti."
-    }
+            try:
+                content = process_document(file_path)
+                if not content or not content.strip():
+                    errors.append(f"{filename}: nessun testo estratto")
+                    with _scan_lock:
+                        _scan_status["processed"] += 1
+                    continue
+                metadata = get_document_metadata(file_path)
+                doc_id = filename.replace(" ", "_").lower()
+                add_document_to_store(doc_id, content, metadata)
+                add_document(filename, file_path, metadata["extension"], metadata["size_bytes"])
+                new_files += 1
+            except Exception as e:
+                errors.append(f"{filename}: {str(e)}")
+            with _scan_lock:
+                _scan_status["processed"] += 1
+                _scan_status["new_files"] = new_files
+                _scan_status["errors"] = list(errors)
+        return {
+            "status": "completed",
+            "scanned_files": len(files),
+            "new_files": new_files,
+            "already_indexed": already_indexed,
+            "errors": errors,
+            "message": f"Aggiunti {new_files} nuovi documenti. {already_indexed} già presenti.",
+        }
+
+    _run_scan_in_background(_do_scan, "scan-custom")
+    return {"status": "started", "message": "Scansione avviata in background", "total_files": len(files)}
 
 
 @router.get("/folders", response_model=list)
@@ -528,49 +615,62 @@ async def remove_folder_endpoint(folder_name: str):
 async def scan_folder_endpoint(folder_name: str):
     """Scansiona una cartella monitorizzata"""
     from app.utils.database import get_folders
-    from app.utils.document_processor import process_document, get_document_metadata
-    
+    from app.utils.document_processor import scan_custom_directory
+
     folders = get_folders()
     folder = next((f for f in folders if f["name"] == folder_name), None)
     if not folder:
         raise HTTPException(status_code=404, detail="Cartella non trovata")
-    
+
     folder_path = folder["path"]
-    from app.utils.document_processor import scan_custom_directory
-    
+
     try:
         files = scan_custom_directory(folder_path)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    
-    new_files = 0
-    errors = []
-    
-    for file_path in files:
-        filename = os.path.basename(file_path)
-        if is_document_indexed(filename):
-            continue
-        
-        try:
-            content = process_document(file_path)
-            if not content or not content.strip():
-                errors.append(f"{filename}: nessun testo estratto")
+
+    with _scan_lock:
+        if _scan_status["running"]:
+            raise HTTPException(status_code=409, detail="Scansione già in corso")
+
+    def _do_scan():
+        new_files = 0
+        errors = []
+        with _scan_lock:
+            _scan_status["total_files"] = len(files)
+        for file_path in files:
+            filename = os.path.basename(file_path)
+            if is_document_indexed(filename):
+                with _scan_lock:
+                    _scan_status["processed"] += 1
                 continue
-            
-            metadata = get_document_metadata(file_path)
-            doc_id = filename.replace(" ", "_").lower()
-            add_document_to_store(doc_id, content, metadata)
-            add_document(filename, file_path, metadata["extension"], metadata["size_bytes"])
-            new_files += 1
-        except Exception as e:
-            errors.append(f"{filename}: {str(e)}")
-    
-    return {
-        "status": "completed",
-        "scanned_files": len(files),
-        "new_files": new_files,
-        "errors": errors,
-    }
+            try:
+                content = process_document(file_path)
+                if not content or not content.strip():
+                    errors.append(f"{filename}: nessun testo estratto")
+                    with _scan_lock:
+                        _scan_status["processed"] += 1
+                    continue
+                metadata = get_document_metadata(file_path)
+                doc_id = filename.replace(" ", "_").lower()
+                add_document_to_store(doc_id, content, metadata)
+                add_document(filename, file_path, metadata["extension"], metadata["size_bytes"])
+                new_files += 1
+            except Exception as e:
+                errors.append(f"{filename}: {str(e)}")
+            with _scan_lock:
+                _scan_status["processed"] += 1
+                _scan_status["new_files"] = new_files
+                _scan_status["errors"] = list(errors)
+        return {
+            "status": "completed",
+            "scanned_files": len(files),
+            "new_files": new_files,
+            "errors": errors,
+        }
+
+    _run_scan_in_background(_do_scan, "scan-folder")
+    return {"status": "started", "message": "Scansione avviata in background", "total_files": len(files)}
 
 @router.get("/folders/{folder_name}/files")
 async def list_folder_files(folder_name: str):

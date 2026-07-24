@@ -14,6 +14,14 @@ if ! command -v ollama &> /dev/null; then
     fi
 fi
 
+# Kill stale processes on port 8000
+STALE_PIDS=$(lsof -ti :8000 2>/dev/null)
+if [ -n "$STALE_PIDS" ]; then
+    echo "🧹 Pulizia porta 8000 (processi: $STALE_PIDS)..."
+    echo "$STALE_PIDS" | xargs kill -9 2>/dev/null
+    sleep 1
+fi
+
 # Avvia backend in background
 echo "📡 Avvio backend..."
 cd "$(dirname "$0")/backend"

@@ -1,7 +1,7 @@
 const { app, BrowserWindow, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const http = require('http');
 const serveBuild = require('./serve-build');
 
@@ -216,6 +216,37 @@ function ensureVenv(pythonCmd, backendPath, log) {
 }
 
 // ---------------------------------------------------------------------------
+// Kill stale process on port
+// ---------------------------------------------------------------------------
+function killPortProcess(port, log) {
+  try {
+    const output = execSync(`lsof -ti :${port}`, {
+      encoding: 'utf8',
+      timeout: 5000,
+      env: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin' },
+    }).trim();
+    if (output) {
+      const pids = output.split('\n').filter(Boolean);
+      for (const pid of pids) {
+        log(`[MAIN] Killing stale process PID ${pid} on port ${port}`);
+        try {
+          execSync(`kill -9 ${pid}`, {
+            encoding: 'utf8',
+            timeout: 5000,
+            env: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin' },
+          });
+        } catch {}
+      }
+      // Wait briefly for port to be released
+      execSync('sleep 1', { timeout: 3000 });
+      log(`[MAIN] Port ${port} cleared`);
+    }
+  } catch {
+    // lsof found nothing or failed — port is free
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Backend
 // ---------------------------------------------------------------------------
 let backendLogFile = null;
@@ -259,6 +290,10 @@ function startBackend() {
   // Ensure venv with all dependencies
   const pythonCmd = ensureVenv(basePython, backendPath, log);
   log(`[MAIN] Using python: ${pythonCmd}`);
+
+  // Kill any stale process occupying the backend port
+  killPortProcess(BACKEND_PORT, log);
+
   backendProcess = spawn(pythonCmd, [
     '-m', 'uvicorn', 'app.main:app',
     '--host', '127.0.0.1',

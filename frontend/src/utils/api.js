@@ -28,6 +28,7 @@ export const documentsApi = {
   batchReindex: (filenames) => api.post('/api/documents/batch-reindex', { filenames }),
   scan: () => api.post('/api/documents/scan'),
   scanCustom: (directory) => api.post('/api/documents/scan-custom', { directory }),
+  scanStatus: () => api.get('/api/documents/scan-status'),
   count: () => api.get('/api/documents/count'),
   reindex: (filename) => api.post(`/api/documents/reindex/${encodeURIComponent(filename)}`),
   reindexAll: () => api.post('/api/documents/reindex-all'),

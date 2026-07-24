@@ -5,6 +5,7 @@ function DocumentList({ showToast }) {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(null);
   const [reindexing, setReindexing] = useState(null);
   const [reindexAllLoading, setReindexAllLoading] = useState(false);
   const [reindexProgress, setReindexProgress] = useState(null);
@@ -39,15 +40,47 @@ function DocumentList({ showToast }) {
     }
   };
 
+  const pollScanStatus = async (onDone) => {
+    let attempts = 0;
+    const maxAttempts = 600; // 5 min max (500ms interval)
+    const poll = async () => {
+      try {
+        const res = await documentsApi.scanStatus();
+        const s = res.data;
+        if (s.total_files > 0) {
+          setScanProgress({ processed: s.processed, total: s.total_files, pct: s.progress_pct, newFiles: s.new_files });
+        }
+        if (s.done) {
+          setScanProgress(null);
+          fetchDocuments();
+          if (s.result) {
+            const r = s.result;
+            if (r.new_files > 0) showToast(`Scansione completata: ${r.new_files} nuovi documenti`, 'success');
+            else showToast('Scansione completata: nessun nuovo documento', 'info');
+            if (r.errors && r.errors.length > 0) console.error('Errori scansione:', r.errors);
+          }
+          onDone();
+          return;
+        }
+      } catch {}
+      attempts++;
+      if (attempts < maxAttempts) setTimeout(poll, 500);
+      else { setScanProgress(null); onDone(); }
+    };
+    poll();
+  };
+
   const handleScan = async () => {
     setScanning(true);
     try {
       await documentsApi.scan();
-      fetchDocuments();
-      showToast('Scansione completata', 'success');
+      showToast('Scansione avviata...', 'info');
+      pollScanStatus(() => setScanning(false));
     } catch (error) {
       console.error('Errore scansione:', error);
-    } finally {
+      if (error.response?.status === 409) {
+        showToast('Scansione già in corso', 'warning');
+      }
       setScanning(false);
     }
   };
@@ -132,19 +165,19 @@ function DocumentList({ showToast }) {
     try {
       const response = await documentsApi.scanCustom(customDir);
       const data = response.data;
-      showToast(data.message, data.new_files > 0 ? 'success' : 'info');
-      if (data.errors && data.errors.length > 0) {
-        console.error('Errori:', data.errors);
-      }
-      fetchDocuments();
+      showToast(data.message || 'Scansione avviata...', 'info');
       if (!recentFolders.includes(customDir)) {
         setRecentFolders([customDir, ...recentFolders.slice(0, 4)]);
       }
       setPreviewFiles([]);
+      pollScanStatus(() => setScanningCustom(false));
     } catch (error) {
       console.error('Errore scansione cartella personalizzata:', error);
-      showToast('Errore durante la scansione: ' + (error.response?.data?.detail || error.message), 'error');
-    } finally {
+      if (error.response?.status === 409) {
+        showToast('Scansione già in corso', 'warning');
+      } else {
+        showToast('Errore durante la scansione: ' + (error.response?.data?.detail || error.message), 'error');
+      }
       setScanningCustom(false);
     }
   };
@@ -208,10 +241,10 @@ function DocumentList({ showToast }) {
     try {
       const response = await documentsApi.scanCustom(customDir);
       const data = response.data;
-      showToast(`Trovati ${data.scanned_files} file. ${data.new_files} nuovi, ${data.already_indexed} già indicizzati.`, 'info');
+      showToast(`Scansione avviata per ${data.total_files || '?'} file...`, 'info');
+      pollScanStatus(() => setLoadingPreview(false));
     } catch (error) {
       console.error('Errore preview:', error);
-    } finally {
       setLoadingPreview(false);
     }
   };
@@ -394,6 +427,17 @@ function DocumentList({ showToast }) {
           >
             {scanning ? '⏳ Scansione...' : '🔍 Scansiona Cartella'}
           </button>
+          {scanProgress && (
+            <div style={{ width: '100%', marginTop: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                <span>Indicizzazione: {scanProgress.processed}/{scanProgress.total}</span>
+                <span>{scanProgress.pct}% · {scanProgress.newFiles} nuovi</span>
+              </div>
+              <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
+                <div style={{ width: `${scanProgress.pct}%`, height: '100%', background: 'linear-gradient(90deg, #4a9eff, #a855f7)', borderRadius: '3px', transition: 'width 0.5s ease' }} />
+              </div>
+            </div>
+          )}
           <button
             onClick={fetchDocuments}
             style={{
