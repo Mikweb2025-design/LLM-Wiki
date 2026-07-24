@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_URL } from '../utils/api';
 
 function AppInfo() {
   const [stats, setStats] = useState({
@@ -16,14 +17,14 @@ function AppInfo() {
 
   const checkStatus = async () => {
     try {
-      const res = await fetch('http://localhost:8000/health');
+      const res = await fetch(`${API_URL}/health`);
       setStats(prev => ({ ...prev, backend: res.ok }));
     } catch {
       setStats(prev => ({ ...prev, backend: false }));
     }
 
     try {
-      const res = await fetch('http://localhost:3000');
+      const res = await fetch('http://localhost:3456');
       setStats(prev => ({ ...prev, frontend: res.ok }));
     } catch {
       setStats(prev => ({ ...prev, frontend: false }));

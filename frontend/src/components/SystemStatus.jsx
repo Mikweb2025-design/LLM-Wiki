@@ -42,7 +42,7 @@ function SystemStatus() {
       <div className="glass-card" style={{ maxWidth: '480px', margin: '2rem auto', padding: '2rem', textAlign: 'center' }}>
         <div style={{ fontSize: '2.5rem', marginBottom: '1rem', opacity: 0.8 }}>⚠️</div>
         <p style={{ color: '#ff5555', fontWeight: 500, marginBottom: '0.5rem' }}>Impossibile connettersi al server</p>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '1.5rem' }}>Verifica che il backend sia attivo su http://localhost:8000</p>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '1.5rem' }}>Verifica che il backend sia attivo</p>
         <button
           onClick={fetchStatus}
           style={{

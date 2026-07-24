@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { documentsApi } from '../utils/api';
+import { documentsApi, API_URL } from '../utils/api';
 
 function FilePreview({ filename, onClose }) {
   const [content, setContent] = useState('');
@@ -16,12 +16,12 @@ function FilePreview({ filename, onClose }) {
 
     // Images and PDF: serve the file directly (preview endpoint returns FileResponse)
     if (['png', 'jpg', 'jpeg', 'bmp', 'tiff'].includes(ext) || ext === 'pdf') {
-      setContent(`http://localhost:8000/api/documents/preview/${encodeURIComponent(filename)}`);
+      setContent(`${API_URL}/api/documents/preview/${encodeURIComponent(filename)}`);
       setLoading(false);
     } else {
       // Text files: get JSON with content
       try {
-        const response = await fetch(`http://localhost:8000/api/documents/content/${encodeURIComponent(filename)}`);
+        const response = await fetch(`${API_URL}/api/documents/content/${encodeURIComponent(filename)}`);
         const data = await response.json();
         setContent(data.content || 'Nessun contenuto disponibile');
       } catch (e) {

@@ -46,6 +46,10 @@
       {
         "from": "../backend/requirements.txt",
         "to": "backend/requirements.txt"
+      },
+      {
+        "from": "../backend/.env",
+        "to": "backend/.env"
       }
     ],
     "asar": true

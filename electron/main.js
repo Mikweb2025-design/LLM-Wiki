@@ -37,15 +37,7 @@ function getFrontendBuildPath() {
 // Python detection
 // ---------------------------------------------------------------------------
 function findPython() {
-  const candidates = [
-    'python3',
-    'python',
-    '/opt/homebrew/bin/python3',
-    '/usr/local/bin/python3',
-    '/Library/Frameworks/Python.framework/Versions/3.13/bin/python3',
-    '/Library/Frameworks/Python.framework/Versions/3.14/bin/python3',
-    '/usr/bin/python3',
-  ];
+  const { execSync } = require('child_process');
 
   // In dev, prefer local venv
   if (!app.isPackaged) {
@@ -53,13 +45,51 @@ function findPython() {
     if (fs.existsSync(venvPy)) return venvPy;
   }
 
-  for (const cmd of candidates) {
+  // Absolute paths — check directly (no `which` needed, works from Finder)
+  // Prioritize Python 3.13 which has the dependencies installed
+  const absPaths = [
+    '/Library/Frameworks/Python.framework/Versions/3.13/bin/python3',
+    '/Library/Frameworks/Python.framework/Versions/3.14/bin/python3',
+    '/opt/homebrew/bin/python3',
+    '/usr/local/bin/python3',
+    '/usr/bin/python3',
+  ];
+
+  // Validate each candidate can import uvicorn
+  for (const p of absPaths) {
+    if (!fs.existsSync(p)) continue;
     try {
-      const { execSync } = require('child_process');
-      const resolved = execSync(`which ${cmd}`, { encoding: 'utf8', timeout: 3000 }).trim();
-      if (resolved && fs.existsSync(resolved)) return resolved;
+      execSync(`"${p}" -c "import uvicorn, fastapi"`, {
+        encoding: 'utf8', timeout: 5000,
+        env: { PYTHONIOENCODING: 'utf-8' },
+      });
+      return p;
     } catch {
-      // try next
+      // This Python doesn't have the deps, try next
+    }
+  }
+
+  // Fallback: use `which` for bare command names (needs a shell)
+  const bareCmds = ['python3', 'python'];
+  for (const cmd of bareCmds) {
+    try {
+      const resolved = execSync(`/usr/bin/which ${cmd}`, {
+        encoding: 'utf8', timeout: 3000,
+        env: { PATH: '/Library/Frameworks/Python.framework/Versions/3.13/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin' },
+      }).trim();
+      if (resolved && fs.existsSync(resolved)) {
+        try {
+          execSync(`"${resolved}" -c "import uvicorn, fastapi"`, {
+            encoding: 'utf8', timeout: 5000,
+            env: { PYTHONIOENCODING: 'utf-8' },
+          });
+          return resolved;
+        } catch {
+          // has python but no deps
+        }
+      }
+    } catch {
+      // which not found
     }
   }
   return null;
@@ -122,6 +152,12 @@ function copyDirSync(src, dest) {
 // ---------------------------------------------------------------------------
 // Backend
 // ---------------------------------------------------------------------------
+let backendLogFile = null;
+
+function getLogPath() {
+  return path.join(app.getPath('userData'), 'backend.log');
+}
+
 function startBackend() {
   const sourcePath = getBackendPath();
   const backendPath = ensureWritableBackend(sourcePath);
@@ -139,6 +175,21 @@ function startBackend() {
   console.log(`[MAIN] Python: ${pythonCmd}`);
   console.log(`[MAIN] Backend path: ${backendPath}`);
 
+  // Write logs to file so we can debug Finder launches
+  const logPath = getLogPath();
+  try { backendLogFile = fs.createWriteStream(logPath); } catch {}
+
+  function log(msg) {
+    const line = `[${new Date().toISOString()}] ${msg}\n`;
+    console.log(msg);
+    try { backendLogFile.write(line); } catch {}
+  }
+
+  log(`[MAIN] Python: ${pythonCmd}`);
+  log(`[MAIN] Backend path: ${backendPath}`);
+  log(`[MAIN] CWD exists: ${fs.existsSync(backendPath)}`);
+  log(`[MAIN] app/main.py exists: ${fs.existsSync(path.join(backendPath, 'app', 'main.py'))}`);
+
   backendProcess = spawn(pythonCmd, [
     '-m', 'uvicorn', 'app.main:app',
     '--host', '127.0.0.1',
@@ -149,8 +200,22 @@ function startBackend() {
     env: { ...process.env, PYTHONUNBUFFERED: '1' },
   });
 
-  backendProcess.stdout.on('data', (d) => console.log(`[BACKEND] ${d.toString().trim()}`));
-  backendProcess.stderr.on('data', (d) => console.error(`[BACKEND] ${d.toString().trim()}`));
+  backendProcess.stdout.on('data', (d) => {
+    const msg = d.toString().trim();
+    console.log(`[BACKEND] ${msg}`);
+    log(`[BACKEND] ${msg}`);
+  });
+  backendProcess.stderr.on('data', (d) => {
+    const msg = d.toString().trim();
+    console.error(`[BACKEND] ${msg}`);
+    log(`[BACKEND-ERR] ${msg}`);
+    // Update splash with error info
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.webContents.executeJavaScript(
+        `document.querySelector('p').textContent = '${msg.substring(0, 80).replace(/'/g, "\\'")}'`
+      ).catch(() => {});
+    }
+  });
 
   backendProcess.on('error', (err) => {
     console.error('[BACKEND] spawn error:', err);
@@ -159,6 +224,7 @@ function startBackend() {
   });
 
   backendProcess.on('exit', (code) => {
+    log(`[BACKEND] exited with code ${code}`);
     console.log(`[BACKEND] exited with code ${code}`);
     if (code !== null && code !== 0 && mainWindow) {
       dialog.showErrorBox('Backend crash', `Il backend si è fermato (codice ${code}).`);
