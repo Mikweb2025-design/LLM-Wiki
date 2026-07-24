@@ -66,10 +66,65 @@ function findPython() {
 }
 
 // ---------------------------------------------------------------------------
+// Writable backend copy (DMG is read-only, so we copy backend to ~/Library/...)
+// ---------------------------------------------------------------------------
+function getWritableBackendPath() {
+  const userData = app.getPath('userData'); // ~/Library/Application Support/LLM Wiki
+  return path.join(userData, 'backend');
+}
+
+function ensureWritableBackend(sourcePath) {
+  const destPath = getWritableBackendPath();
+
+  // If dest exists and source is inside a read-only mount, use dest directly
+  if (fs.existsSync(destPath) && !isPathWritable(sourcePath)) {
+    console.log(`[MAIN] Using cached backend: ${destPath}`);
+    return destPath;
+  }
+
+  // If dest doesn't exist or source is newer, copy
+  if (!fs.existsSync(destPath) || isSourceNewer(sourcePath, destPath)) {
+    console.log(`[MAIN] Copying backend to ${destPath}...`);
+    fs.mkdirSync(destPath, { recursive: true });
+    copyDirSync(sourcePath, destPath);
+    console.log('[MAIN] Backend copied.');
+  }
+
+  return destPath;
+}
+
+function isPathWritable(p) {
+  try { fs.accessSync(p, fs.constants.W_OK); return true; }
+  catch { return false; }
+}
+
+function isSourceNewer(src, dest) {
+  try {
+    const srcStat = fs.statSync(path.join(src, 'app', 'main.py'));
+    const destStat = fs.statSync(path.join(dest, 'app', 'main.py'));
+    return srcStat.mtimeMs > destStat.mtimeMs;
+  } catch { return true; }
+}
+
+function copyDirSync(src, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirSync(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Backend
 // ---------------------------------------------------------------------------
 function startBackend() {
-  const backendPath = getBackendPath();
+  const sourcePath = getBackendPath();
+  const backendPath = ensureWritableBackend(sourcePath);
   const pythonCmd = findPython();
 
   if (!pythonCmd) {
