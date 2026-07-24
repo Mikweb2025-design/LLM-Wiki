@@ -295,8 +295,12 @@ function startBackend() {
   backendProcess.on('exit', (code) => {
     log(`[BACKEND] exited with code ${code}`);
     console.log(`[BACKEND] exited with code ${code}`);
-    if (code !== null && code !== 0 && mainWindow) {
-      dialog.showErrorBox('Backend crash', `Il backend si è fermato (codice ${code}).`);
+    if (code !== null && code !== 0) {
+      const msg = `Il backend si è fermato (codice ${code}).\nLog: ${getLogPath()}`;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        dialog.showErrorBox('Backend crash', msg);
+      }
+      if (appReady) app.quit();
     }
   });
 }
@@ -306,26 +310,32 @@ function startBackend() {
 // ---------------------------------------------------------------------------
 function pollHealth(onReady) {
   const start = Date.now();
+  let done = false;
 
   function check() {
+    if (done) return;
     const req = http.get(`http://127.0.0.1:${BACKEND_PORT}/health`, (res) => {
+      if (done) return;
       if (res.statusCode === 200) {
+        done = true;
         console.log('[MAIN] Backend ready');
         onReady();
         return;
       }
       retry();
     });
-    req.on('error', retry);
-    req.setTimeout(2000, () => { req.destroy(); retry(); });
+    req.on('error', () => { if (!done) retry(); });
+    req.setTimeout(2000, () => { req.destroy(); if (!done) retry(); });
   }
 
   function retry() {
+    if (done) return;
     if (Date.now() - start > HEALTH_TIMEOUT_MS) {
+      done = true;
       console.error('[MAIN] Backend health timeout');
       dialog.showErrorBox(
         'Timeout Backend',
-        'Il backend non ha risposto entro 30 secondi.\nControlla che le dipendenze siano installate:\n\n  cd backend && pip install -r requirements.txt'
+        `Il backend non ha risposto entro ${HEALTH_TIMEOUT_MS / 1000} secondi.\nControlla i log in:\n\n  ${getLogPath()}\n\nOppure reinstalla le dipendenze:`
       );
       app.quit();
       return;
