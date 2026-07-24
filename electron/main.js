@@ -430,7 +430,12 @@ function createSplash() {
 // ---------------------------------------------------------------------------
 // Main window
 // ---------------------------------------------------------------------------
+let mainWindowCreated = false;
+
 function createMainWindow() {
+  if (mainWindowCreated || (mainWindow && !mainWindow.isDestroyed())) return;
+  mainWindowCreated = true;
+
   const startUrl = process.env.ELECTRON_START_URL || `http://127.0.0.1:${FRONTEND_PORT}`;
 
   mainWindow = new BrowserWindow({
@@ -449,14 +454,17 @@ function createMainWindow() {
   mainWindow.loadURL(startUrl);
 
   mainWindow.once('ready-to-show', () => {
-    if (splashWindow) {
+    if (splashWindow && !splashWindow.isDestroyed()) {
       splashWindow.close();
       splashWindow = null;
     }
     mainWindow.show();
   });
 
-  mainWindow.on('closed', () => { mainWindow = null; });
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+    mainWindowCreated = false;
+  });
 
   mainWindow.webContents.on('did-fail-load', (_e, code, desc) => {
     console.error(`[MAIN] load failed: ${code} ${desc}`);
@@ -466,7 +474,10 @@ function createMainWindow() {
 // ---------------------------------------------------------------------------
 // App lifecycle
 // ---------------------------------------------------------------------------
+let appReady = false;
+
 app.whenReady().then(() => {
+  appReady = true;
   createSplash();
   startFrontendServer();
   startBackend();
@@ -476,7 +487,12 @@ app.whenReady().then(() => {
   });
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+    if (!appReady) return;
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createMainWindow();
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    }
   });
 });
 
