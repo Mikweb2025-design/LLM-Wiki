@@ -12,7 +12,7 @@ let frontendServer;
 
 const BACKEND_PORT = 8000;
 const FRONTEND_PORT = 3456;
-const HEALTH_TIMEOUT_MS = 30000;
+const HEALTH_TIMEOUT_MS = 120000; // 120s — venv install on first launch can take ~60s+
 const HEALTH_INTERVAL_MS = 500;
 
 // ---------------------------------------------------------------------------
@@ -150,6 +150,72 @@ function copyDirSync(src, dest) {
 }
 
 // ---------------------------------------------------------------------------
+// Venv management — create venv and install deps if needed
+// ---------------------------------------------------------------------------
+function getVenvPython(backendPath) {
+  return path.join(backendPath, 'venv', 'bin', 'python3');
+}
+
+function ensureVenv(pythonCmd, backendPath, log) {
+  const venvPython = getVenvPython(backendPath);
+  const venvMarker = path.join(backendPath, 'venv', '.installed');
+  const reqFile = path.join(backendPath, 'requirements.txt');
+
+  // Skip if venv already exists and requirements haven't changed
+  if (fs.existsSync(venvPython) && fs.existsSync(venvMarker)) {
+    try {
+      const reqStat = fs.statSync(reqFile);
+      const markerStat = fs.statSync(venvMarker);
+      if (reqStat.mtimeMs <= markerStat.mtimeMs) {
+        log('[MAIN] Venv already up to date');
+        return venvPython;
+      }
+    } catch { /* re-create */ }
+  }
+
+  log('[MAIN] Creating venv and installing dependencies (first launch may take a few minutes)...');
+
+  // Send splash progress
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.webContents.executeJavaScript(
+      `document.querySelector('p').textContent = 'Installing dependencies (first launch only)...'`
+    ).catch(() => {});
+  }
+
+  const { execSync } = require('child_process');
+
+  try {
+    // Create venv
+    log(`[MAIN] Running: ${pythonCmd} -m venv ${path.join(backendPath, 'venv')}`);
+    execSync(`"${pythonCmd}" -m venv "${path.join(backendPath, 'venv')}"`, {
+      encoding: 'utf8', timeout: 60000,
+      env: { PYTHONIOENCODING: 'utf-8' },
+    });
+    log('[MAIN] Venv created');
+
+    // Install requirements
+    log('[MAIN] Installing requirements...');
+    execSync(`"${venvPython}" -m pip install --upgrade pip`, {
+      encoding: 'utf8', timeout: 120000,
+      env: { PYTHONIOENCODING: 'utf-8' },
+    });
+    execSync(`"${venvPython}" -m pip install -r "${reqFile}"`, {
+      encoding: 'utf8', timeout: 600000,
+      env: { PYTHONIOENCODING: 'utf-8' },
+    });
+    log('[MAIN] Requirements installed');
+
+    // Mark as installed
+    fs.writeFileSync(venvMarker, new Date().toISOString());
+    return venvPython;
+  } catch (err) {
+    log(`[MAIN-ERROR] Venv setup failed: ${err.message}`);
+    // Fall back to system python — it might work if deps are globally installed
+    return pythonCmd;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Backend
 // ---------------------------------------------------------------------------
 let backendLogFile = null;
@@ -161,9 +227,9 @@ function getLogPath() {
 function startBackend() {
   const sourcePath = getBackendPath();
   const backendPath = ensureWritableBackend(sourcePath);
-  const pythonCmd = findPython();
+  const basePython = findPython();
 
-  if (!pythonCmd) {
+  if (!basePython) {
     dialog.showErrorBox(
       'Python non trovato',
       'LLM Wiki richiede Python 3 con pip.\n\nInstalla Python da https://python.org\npoi esegui: pip install -r requirements.txt'
@@ -172,7 +238,7 @@ function startBackend() {
     return;
   }
 
-  console.log(`[MAIN] Python: ${pythonCmd}`);
+  console.log(`[MAIN] Python: ${basePython}`);
   console.log(`[MAIN] Backend path: ${backendPath}`);
 
   // Write logs to file so we can debug Finder launches
@@ -185,11 +251,14 @@ function startBackend() {
     try { backendLogFile.write(line); } catch {}
   }
 
-  log(`[MAIN] Python: ${pythonCmd}`);
+  log(`[MAIN] Python: ${basePython}`);
   log(`[MAIN] Backend path: ${backendPath}`);
   log(`[MAIN] CWD exists: ${fs.existsSync(backendPath)}`);
   log(`[MAIN] app/main.py exists: ${fs.existsSync(path.join(backendPath, 'app', 'main.py'))}`);
 
+  // Ensure venv with all dependencies
+  const pythonCmd = ensureVenv(basePython, backendPath, log);
+  log(`[MAIN] Using python: ${pythonCmd}`);
   backendProcess = spawn(pythonCmd, [
     '-m', 'uvicorn', 'app.main:app',
     '--host', '127.0.0.1',
@@ -428,6 +497,8 @@ function cleanup() {
 
 app.on('before-quit', cleanup);
 app.on('window-all-closed', () => {
-  cleanup();
-  if (process.platform !== 'darwin') app.quit();
+  if (process.platform !== 'darwin') {
+    cleanup();
+    app.quit();
+  }
 });
