@@ -10,13 +10,17 @@ import ExportChat from './components/ExportChat';
 import KeyboardShortcuts from './components/KeyboardShortcuts';
 import CompareDocuments from './components/CompareDocuments';
 import Folders from './components/Folders';
+import Roadmap from './components/Roadmap';
 import NotificationCenter, { useNotifications } from './components/NotificationCenter';
 import DiagnosticPanel from './components/DiagnosticPanel';
+import { I18nContext, getInitialLang, t } from './utils/i18n';
+import { LANGS } from './utils/i18n';
 import './index.css';
 
 function App() {
   const [activeTab, setActiveTab] = useState('chat');
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [lang, setLang] = useState(getInitialLang());
   const { toasts, addToast, removeToast } = useNotifications();
   // Lo stato online/offline è ora gestito da <DiagnosticPanel /> che fa polling
   // su /health/full ogni 15s e mostra anche il dettaglio per componente.
@@ -59,18 +63,20 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const tabs = [
-    { id: 'chat', label: 'Chat' },
-    { id: 'dashboard', label: 'Dashboard' },
-    { id: 'search', label: 'Ricerca' },
-    { id: 'upload', label: 'Carica' },
-    { id: 'folders', label: 'Cartelle' },
-    { id: 'documents', label: 'Documenti' },
-    { id: 'compare', label: 'Confronta' },
-    { id: 'export', label: 'Esporta' },
-    { id: 'status', label: 'Stato' },
-    { id: 'settings', label: 'Config' },
+  const tabDefs = [
+    { id: 'chat', key: 'tabs.chat' },
+    { id: 'dashboard', key: 'tabs.dashboard' },
+    { id: 'search', key: 'tabs.search' },
+    { id: 'upload', key: 'tabs.upload' },
+    { id: 'folders', key: 'tabs.folders' },
+    { id: 'documents', key: 'tabs.documents' },
+    { id: 'compare', key: 'tabs.compare' },
+    { id: 'export', key: 'tabs.export' },
+    { id: 'status', key: 'tabs.status' },
+    { id: 'settings', key: 'tabs.settings' },
+    { id: 'roadmap', key: 'tabs.roadmap' },
   ];
+  const tabs = tabDefs.map(d => ({ id: d.id, label: t(lang, d.key) }));
 
   const getComponent = (tabId) => {
     const components = {
@@ -84,6 +90,7 @@ function App() {
       export: ExportChat,
       status: SystemStatus,
       settings: Settings,
+      roadmap: Roadmap,
     };
     const Component = components[tabId];
     // Expose global navigate for any child that needs it (Quick Actions)
@@ -93,7 +100,13 @@ function App() {
     return Component ? <Component showToast={addToast} /> : null;
   };
 
+  const handleLangChange = (code) => {
+    setLang(code);
+    try { localStorage.setItem('llmwiki_lang', code); } catch {}
+  };
+
   return (
+    <I18nContext.Provider value={{ lang, setLang: handleLangChange, t }}>
     <div style={{ 
       minHeight: '100vh', 
       fontFamily: 'var(--font-sans)',
@@ -206,7 +219,33 @@ function App() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {/* Language switcher — flags top-right */}
+          <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-glass)', border: '1px solid var(--border-glass)', borderRadius: '10px', padding: '0.2rem' }}>
+            {LANGS.map(l => (
+              <button
+                key={l.code}
+                onClick={() => handleLangChange(l.code)}
+                title={l.name}
+                style={{
+                  background: lang === l.code ? 'rgba(74,158,255,0.15)' : 'transparent',
+                  border: lang === l.code ? '1px solid rgba(74,158,255,0.25)' : '1px solid transparent',
+                  borderRadius: '8px',
+                  padding: '0.25rem 0.45rem',
+                  cursor: 'pointer',
+                  fontSize: '1.05rem',
+                  lineHeight: 1,
+                  transition: 'all 0.2s',
+                  opacity: lang === l.code ? 1 : 0.65,
+                }}
+                onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+                onMouseLeave={e => e.currentTarget.style.opacity = lang === l.code ? '1' : '0.65'}
+              >
+                {l.flag}
+              </button>
+            ))}
+          </div>
+
           <DiagnosticPanel />
 
           <button
@@ -318,9 +357,10 @@ function App() {
         letterSpacing: '0.05em',
         fontWeight: 300,
       }}>
-        LLM Wiki &copy; 2026 &middot; Powered by Local AI
+        LLM Wiki &copy; 2026 &middot; {t(lang, 'footer')}
       </footer>
     </div>
+    </I18nContext.Provider>
   );
 }
 
