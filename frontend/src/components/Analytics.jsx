@@ -103,6 +103,7 @@ export default function Analytics({ showToast }) {
   const [customPrompt, setCustomPrompt] = useState('');
   const [groupBy, setGroupBy] = useState('month');
   const [chartType, setChartType] = useState('bar');
+  const [sumField, setSumField] = useState('importo');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [presets, setPresets] = useState({});
@@ -118,17 +119,21 @@ export default function Analytics({ showToast }) {
     return n;
   });
 
+  // aggiorna sumField automaticamente quando cambia preset (ma lascia override manuale)
+  useEffect(()=>{
+    const defaults = { fatture: 'importo', spese: 'importo', stipendi: 'importo_lordo', custom: 'importo' };
+    setSumField(defaults[preset] || 'importo');
+  },[preset]);
+
   const handleGenerate = async () => {
     if(selected.size===0){ showToast?.('Seleziona almeno un documento','warning'); return; }
     setLoading(true); setResult(null);
     try {
-      // sum_field intelligente per preset
-      const sumByPreset = { fatture: 'importo', spese: 'importo', stipendi: 'importo_netto', custom: 'importo' };
       const payload = {
         filenames: Array.from(selected),
         preset,
         group_by: groupBy,
-        sum_field: sumByPreset[preset] || 'importo',
+        sum_field: sumField || 'importo',
         custom_fields: preset==='custom' ? customFields.split(',').map(s=>s.trim()).filter(Boolean) : undefined,
         custom_prompt: customPrompt || undefined,
       };
@@ -188,7 +193,7 @@ export default function Analytics({ showToast }) {
       </div>
 
       {/* Config */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:'0.75rem' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))', gap:'0.75rem' }}>
         <div>
           <label style={{ fontSize:'0.75rem', color:'var(--text-secondary)', fontFamily:'var(--font-mono)' }}>Template</label>
           <select value={preset} onChange={e=>setPreset(e.target.value)} style={{ width:'100%', marginTop:'0.25rem', background:'rgba(15,15,25,0.8)', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.55rem 0.7rem', color:'var(--text-primary)', fontSize:'0.85rem' }}>
@@ -197,6 +202,15 @@ export default function Analytics({ showToast }) {
             <option value="spese">Spese — data, importo, categoria, descrizione</option>
             <option value="stipendi">Stipendi — data, importo_netto, importo_lordo, mese</option>
             <option value="custom">Personalizzato…</option>
+          </select>
+        </div>
+        <div>
+          <label style={{ fontSize:'0.75rem', color:'var(--text-secondary)', fontFamily:'var(--font-mono)' }}>Campo importo</label>
+          <select value={sumField} onChange={e=>setSumField(e.target.value)} style={{ width:'100%', marginTop:'0.25rem', background:'rgba(15,15,25,0.8)', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.55rem 0.7rem', color:'var(--text-primary)', fontSize:'0.85rem' }}>
+            <option value="importo">importo</option>
+            <option value="importo_netto">importo_netto</option>
+            <option value="importo_lordo">importo_lordo</option>
+            <option value="betrag">betrag</option>
           </select>
         </div>
         <div>
