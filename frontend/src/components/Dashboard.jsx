@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { statusApi, documentsApi } from '../utils/api';
 
-function Dashboard() {
+function Dashboard({ onNavigate }) {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [documents, setDocuments] = useState([]);
@@ -320,10 +320,10 @@ function Dashboard() {
           Azioni Rapide
         </h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem' }}>
-          <QuickAction icon="📤" label="Carica File" tab="upload" />
-          <QuickAction icon="💬" label="Nuova Chat" tab="chat" />
-          <QuickAction icon="🔄" label="Scansiona" tab="documents" />
-          <QuickAction icon="⚙️" label="Impostazioni" tab="settings" />
+          <QuickAction icon="📤" label="Carica File" tab="upload" onNavigate={onNavigate} />
+          <QuickAction icon="💬" label="Nuova Chat" tab="chat" onNavigate={onNavigate} />
+          <QuickAction icon="🔄" label="Scansiona" tab="documents" onNavigate={onNavigate} />
+          <QuickAction icon="⚙️" label="Impostazioni" tab="settings" onNavigate={onNavigate} />
         </div>
       </div>
 
@@ -462,12 +462,24 @@ function StatCard({ icon, label, value, color }) {
   );
 }
 
-function QuickAction({ icon, label, tab }) {
+function QuickAction({ icon, label, tab, onNavigate }) {
   const navigateToTab = () => {
-    const buttons = document.querySelectorAll('button');
-    buttons.forEach(btn => {
-      if (btn.textContent?.includes(label)) btn.click();
-    });
+    if (onNavigate) {
+      onNavigate(tab);
+      return;
+    }
+    if (typeof window !== 'undefined' && window.__llmwiki_navigate) {
+      window.__llmwiki_navigate(tab);
+      return;
+    }
+    // Fallback legacy DOM
+    const buttons = document.querySelectorAll('nav button');
+    for (const btn of buttons) {
+      if (btn.dataset.tab === tab || btn.textContent?.trim().toLowerCase().includes(tab)) {
+        btn.click();
+        return;
+      }
+    }
   };
 
   return (

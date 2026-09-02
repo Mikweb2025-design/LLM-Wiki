@@ -86,6 +86,10 @@ function App() {
       settings: Settings,
     };
     const Component = components[tabId];
+    // Expose global navigate for any child that needs it (Quick Actions)
+    if (typeof window !== 'undefined') window.__llmwiki_navigate = setActiveTab;
+    // Dashboard needs navigation for Quick Actions
+    if (tabId === 'dashboard') return <Component showToast={addToast} onNavigate={setActiveTab} />;
     return Component ? <Component showToast={addToast} /> : null;
   };
 
@@ -249,6 +253,7 @@ function App() {
             return (
               <button
                 key={tab.id}
+                data-tab={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 style={{
                   padding: '0.5rem 1.1rem',
