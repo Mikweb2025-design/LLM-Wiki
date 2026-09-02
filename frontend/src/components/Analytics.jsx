@@ -122,20 +122,31 @@ export default function Analytics({ showToast }) {
     if(selected.size===0){ showToast?.('Seleziona almeno un documento','warning'); return; }
     setLoading(true); setResult(null);
     try {
+      // sum_field intelligente per preset
+      const sumByPreset = { fatture: 'importo', spese: 'importo', stipendi: 'importo_netto', custom: 'importo' };
       const payload = {
         filenames: Array.from(selected),
         preset,
         group_by: groupBy,
+        sum_field: sumByPreset[preset] || 'importo',
         custom_fields: preset==='custom' ? customFields.split(',').map(s=>s.trim()).filter(Boolean) : undefined,
         custom_prompt: customPrompt || undefined,
       };
       const res = await fetch(`${API}/api/analytics/aggregate`, {
         method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
       });
-      if(!res.ok) throw new Error(await res.text());
-      const data = await res.json();
+      const text = await res.text();
+      if(!res.ok) throw new Error(text.slice(0,400));
+      const data = JSON.parse(text);
       setResult(data);
-      showToast?.(`Grafico pronto: ${data.count} righe → ${data.chart_data.length} gruppi`,'success');
+      // Avvisa se dati deboli (Senza data / zero)
+      const weak = data.chart_data.length===1 && data.chart_data[0]?.label==='Senza data';
+      const zeroTotal = (data.total||0)===0;
+      if(weak || zeroTotal){
+        showToast?.(weak ? 'Dati estratti ma senza data — prova altro preset o seleziona fatture con data/€ chiari' : 'Grafico pronto ma totale 0 — verifica importi nei documenti','warning');
+      } else {
+        showToast?.(`Grafico pronto: ${data.count} righe → ${data.chart_data.length} gruppi • Totale ${data.total?.toLocaleString('it-IT')}€`,'success');
+      }
     } catch(e){
       showToast?.('Errore: '+e.message,'error');
     } finally { setLoading(false);}

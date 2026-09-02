@@ -55,35 +55,55 @@ def _regex_fallback(text: str) -> Dict:
 
     m = DATE_RE.search(text)
     data = m.group(1) if m else None
-    # normalizza data in YYYY-MM-DD se possibile
-    if data and '/' in data or '.' in data:
+    # normalizza data in YYYY-MM-DD se possibile (fix precedence bug: prima era `data and '/' in data or '.' in data` → crash su None)
+    if data and ('/' in data or '.' in data or '-' in data):
         try:
             parts = re.split(r'[./-]', data)
-            if len(parts[2]) == 2: parts[2] = '20' + parts[2]
-            # assume DD/MM/YYYY
-            data = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+            if len(parts) == 3:
+                if len(parts[2]) == 2: parts[2] = '20' + parts[2]
+                # assume DD/MM/YYYY se anno in fondo, altrimenti YYYY-MM-DD
+                if len(parts[0]) == 4:  # YYYY-MM-DD già ok
+                    data = f"{parts[0]}-{parts[1].zfill(2)}-{parts[2].zfill(2)}"
+                else:
+                    data = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
         except: pass
 
-    return {"data": data, "importo": importo}
+    return {"data": data, "importo": importo, "categoria": None, "descrizione": None, "fornitore": None}
 
 
 def _llm_extract(text: str, prompt: str) -> Optional[Dict]:
-    """Chiama LLM per estrazione JSON. Ritorna dict o None."""
+    """Chiama LLM per estrazione JSON. Ritorna dict o None. Timeout 40s, JSON robusto."""
     try:
         from app.utils.llm_handler import chat_with_llm
-        snippet = text[:4000]
-        raw = chat_with_llm(prompt, [{"content": snippet, "metadata": {"filename": "doc"}}])
-        # estrai JSON dal testo (LLM a volte aggiunge spiegazioni)
-        # cerca primo { ... }
-        m = re.search(r'\{.*\}', raw, re.DOTALL)
-        if not m:
+        # Usa snippet più grande ma con limite per non saturare prompt
+        snippet = text[:5000]
+        # Prompt più esplicito per JSON pulito
+        full_prompt = prompt + " Rispondi SOLO con un oggetto JSON valido, senza testo extra."
+        raw = chat_with_llm(full_prompt, [{"content": snippet, "metadata": {"filename": "doc"}}])
+        if not raw or raw.startswith("Errore"):
             return None
-        j = json.loads(m.group(0))
-        # normalizza importo
+        # estrai JSON dal testo (LLM a volte aggiunge spiegazioni/markdown)
+        # prova blocco ```json
+        m = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw, re.DOTALL)
+        if m:
+            j = json.loads(m.group(1))
+        else:
+            m = re.search(r'\{.*\}', raw, re.DOTALL)
+            if not m:
+                return None
+            j = json.loads(m.group(0))
+        # normalizza importo: gestisce "1.234,56 €" / "1234.56"
         for k in list(j.keys()):
             if 'importo' in k and isinstance(j[k], str):
+                v = j[k].replace('€', '').replace('EUR', '').strip()
+                # rimuovi separatore migliaia
+                if ',' in v and '.' in v:
+                    # 1.234,56 → 1234.56
+                    v = v.replace('.', '').replace(',', '.')
+                elif ',' in v:
+                    v = v.replace(',', '.')
                 try:
-                    j[k] = float(j[k].replace('.', '').replace(',', '.').replace('€', '').strip())
+                    j[k] = float(v)
                 except: pass
         return j
     except Exception as e:
@@ -262,14 +282,48 @@ async def aggregate_data(payload: dict):
     if not rows:
         return {"chart_data": [], "rows": [], "group_by": group_by, "total": 0}
 
-    # normalizza importi
+    # normalizza importi — fallback intelligente se sum_field mancante o zero (es. stipendi → importo_lordo/netto)
     for row in rows:
         v = row.get(sum_field)
+        # se 0/None prova alternative con valore >0
+        if v is None or (isinstance(v, (int,float)) and v == 0):
+            for alt in ["importo_lordo", "importo_netto", "importo", "betrag", "total", "amount"]:
+                av = row.get(alt)
+                if av is not None and not (isinstance(av, (int,float)) and av == 0):
+                    # se stringa, prova a parsare prima di decidere
+                    if isinstance(av, str):
+                        tmp = av.replace('€','').replace('EUR','').strip()
+                        if ',' in tmp and '.' in tmp:
+                            tmp = tmp.replace('.','').replace(',','.')
+                        elif ',' in tmp:
+                            tmp = tmp.replace(',','.')
+                        try:
+                            if float(tmp) != 0:
+                                v = av
+                                sum_field = alt
+                                break
+                        except: continue
+                    else:
+                        v = av
+                        sum_field = alt
+                        break
+                elif av is not None and isinstance(av, str) and av.strip():
+                    v = av
+                    sum_field = alt
+                    break
         if isinstance(v, str):
-            try: row[sum_field] = float(v.replace(',', '.').replace('€',''))
+            vv = v.replace('€', '').replace('EUR', '').strip()
+            if ',' in vv and '.' in vv:
+                vv = vv.replace('.', '').replace(',', '.')
+            elif ',' in vv:
+                vv = vv.replace(',', '.')
+            try: row[sum_field] = float(vv)
             except: row[sum_field] = 0
         elif v is None:
             row[sum_field] = 0
+        else:
+            try: row[sum_field] = float(v)
+            except: row[sum_field] = 0
 
     # aggregazione
     from collections import defaultdict
