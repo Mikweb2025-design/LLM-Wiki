@@ -218,7 +218,10 @@ async def extract_data(payload: dict):
         prompt = preset["prompt"]
         fields = preset["fields"]
 
+    # Excel/CSV veloci → gestiti subito sequenziali
     results = []
+    pdf_jobs = []  # (fname, fpath)
+
     for fname in filenames:
         doc = get_document(fname)
         if not doc:
@@ -226,65 +229,65 @@ async def extract_data(payload: dict):
             continue
         fpath = doc["file_path"]
         ext = Path(fpath).suffix.lower()
-
-        # Excel/CSV → righe tabellari dirette (più affidabile di LLM)
         if ext in (".xlsx", ".xls", ".csv"):
             rows = _extract_excel_rows(fpath)
-            # mappa colonne Excel → campi preset con euristica
             if rows and preset_key in ("fatture", "spese"):
-                # prova a trovare colonna importo/data
                 mapped = []
                 for r in rows:
-                    # lower keys
                     low = {str(k).lower(): v for k, v in r.items()}
-                    # cerca importo
                     imp = None
                     for k in ["importo", "betrag", "amount", "totale", "summe", "netto", "lordo", "total"]:
                         if k in low:
                             try: imp = float(str(low[k]).replace(',', '.').replace('€',''))
                             except: pass
                             if imp is not None: break
-                    # data
                     dat = low.get("data") or low.get("datum") or low.get("date")
                     mapped.append({"data": str(dat) if dat else None, "importo": imp, "_raw": r})
                 results.append({"filename": fname, "extracted": mapped[:50], "source": "excel", "fields": fields})
             else:
                 results.append({"filename": fname, "extracted": rows[:50], "source": "excel", "fields": list(rows[0].keys()) if rows else []})
-            continue
+        else:
+            # PDF/DOCX/IMG → cache hit veloce, altrimenti job parallelo
+            cache_key = _cache_key(fpath, preset_key)
+            cached = _cache_get(cache_key) if use_llm else None
+            if cached is not None:
+                results.append({"filename": fname, "extracted": cached["extracted"], "source": cached["source"] + "+cache", "fields": fields})
+            else:
+                pdf_jobs.append((fname, fpath, cache_key))
 
-        # PDF/DOCX/IMG → LLM o regex (con cache)
-        cache_key = _cache_key(fpath, preset_key)
-        cached = _cache_get(cache_key) if use_llm else None
-        if cached is not None:
-            # cache hit — riusa (copia per evitare mutazione)
-            results.append({"filename": fname, "extracted": cached["extracted"], "source": cached["source"] + "+cache", "fields": fields})
-            continue
+    # Esegui LLM extraction in parallelo (4 worker) — da 30s a ~8s per 12 file
+    if pdf_jobs:
+        import asyncio
+        import concurrent.futures
 
-        try:
-            text = process_document(fpath)
-        except Exception as e:
-            results.append({"filename": fname, "error": str(e), "extracted": None})
-            continue
-        if not text or not text.strip():
-            results.append({"filename": fname, "error": "Testo non estraibile", "extracted": None})
-            continue
-
-        extracted = None
-        source = "regex"
-        if use_llm:
-            extracted = _llm_extract(text, prompt)
-            if extracted is not None:
-                source = "llm"
-        if extracted is None:
-            extracted = _regex_fallback(text)
+        def _process_one(args):
+            fname, fpath, cache_key = args
+            try:
+                text = process_document(fpath)
+            except Exception as e:
+                return {"filename": fname, "error": str(e), "extracted": None, "source": "error", "fields": fields}
+            if not text or not text.strip():
+                return {"filename": fname, "error": "Testo non estraibile", "extracted": None, "source": "error", "fields": fields}
+            extracted = None
             source = "regex"
+            if use_llm:
+                extracted = _llm_extract(text, prompt)
+                if extracted is not None:
+                    source = "llm"
+            if extracted is None:
+                extracted = _regex_fallback(text)
+                source = "regex"
+            try:
+                _cache_set(cache_key, {"extracted": extracted, "source": source})
+            except: pass
+            return {"filename": fname, "extracted": extracted, "source": source, "fields": fields}
 
-        # salva in cache (solo se LLM ha avuto successo, altrimenti regex è già veloce)
-        try:
-            _cache_set(cache_key, {"extracted": extracted, "source": source})
-        except: pass
-
-        results.append({"filename": fname, "extracted": extracted, "source": source, "fields": fields})
+        # max 4 paralleli per non saturare IONOS rate-limit
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [loop.run_in_executor(executor, _process_one, job) for job in pdf_jobs]
+            pdf_results = await asyncio.gather(*futures)
+            results.extend(pdf_results)
 
     return {"results": results, "preset": preset_key, "fields": fields if 'fields' in locals() else preset["fields"]}
 
