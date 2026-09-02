@@ -241,11 +241,11 @@ function CompareDocuments({ showToast }) {
               <div key={i} style={{
                 display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', padding: '0.5rem 0.75rem',
                 borderRadius: '8px', fontSize: '0.8rem', lineHeight: 1.5,
-                background: d.type === 'same' ? 'rgba(255,255,255,0.02)' : 'rgba(255,166,87,0.05)',
-                border: `1px solid ${d.type === 'same' ? 'var(--border-glass)' : 'rgba(255,166,87,0.15)'}`,
+                background: d.type === 'same' ? 'rgba(255,255,255,0.03)' : 'rgba(255,166,87,0.12)',
+                border: `1px solid ${d.type === 'same' ? 'rgba(255,255,255,0.08)' : 'rgba(255,166,87,0.3)'}`,
               }}>
-                <div style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.l1 || '-'}</div>
-                <div style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.l2 || '-'}</div>
+                <div style={{ color: d.type === 'same' ? 'var(--text-primary)' : '#ffcc88', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: d.type === 'diff' ? 500 : 400 }}>{d.l1 || '-'}</div>
+                <div style={{ color: d.type === 'same' ? 'var(--text-primary)' : '#ffcc88', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: d.type === 'diff' ? 500 : 400 }}>{d.l2 || '-'}</div>
               </div>
             ))}
             {result.diff.length > 500 && (

@@ -1,5 +1,14 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { documentsApi } from '../utils/api';
+
+// debounce helper (300ms) — evita di spammare /search ad ogni tasto
+function useDebouncedCallback(fn, delay = 300) {
+  const timer = useRef(null);
+  return useCallback((...args) => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => fn(...args), delay);
+  }, [fn, delay]);
+}
 
 function SearchWithFilters() {
   const [query, setQuery] = useState('');
@@ -11,13 +20,14 @@ function SearchWithFilters() {
   const [docContent, setDocContent] = useState('');
   const [loadingContent, setLoadingContent] = useState(false);
 
-  const handleSearch = async () => {
-    if (!query.trim()) return;
+  const handleSearch = async (q = query) => {
+    const term = (typeof q === 'string' ? q : query).trim();
+    if (!term) return;
     setLoading(true);
     try {
-      const response = await documentsApi.search(query);
+      const response = await documentsApi.search(term);
       let filtered = response.data?.results || response.data || [];
-
+      // Filtri lato client solo per sizeRange (extension già filtrata meglio server-side se necessario)
       if (filters.type !== 'all') {
         filtered = filtered.filter(d => d.metadata?.extension?.includes(filters.type));
       }
@@ -31,14 +41,11 @@ function SearchWithFilters() {
       } else if (filters.sizeRange === 'large') {
         filtered = filtered.filter(d => (d.size_bytes || 0) >= 10 * 1024 * 1024);
       }
-
-      // Sort
       filtered.sort((a, b) => {
         if (sortBy === 'score') return (b.score || 0) - (a.score || 0);
         if (sortBy === 'name') return (a.metadata?.filename || '').localeCompare(b.metadata?.filename || '');
         return 0;
       });
-
       setResults(filtered);
     } catch (e) {
       console.error(e); setResults([]);
@@ -46,6 +53,11 @@ function SearchWithFilters() {
       setLoading(false);
     }
   };
+
+  // ricerca debounced mentre digiti (opzionale, attiva dopo 3 caratteri)
+  const debouncedSearch = useDebouncedCallback((val) => {
+    if (val.trim().length >= 3) handleSearch(val);
+  }, 400);
 
   const formatSize = (bytes) => {
     if (!bytes) return '0 B';
@@ -87,9 +99,9 @@ function SearchWithFilters() {
       {/* Search Input */}
       <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem' }}>
         <input
-          type="text" value={query} onChange={(e) => setQuery(e.target.value)}
+          type="text" value={query} onChange={(e) => { setQuery(e.target.value); debouncedSearch(e.target.value); }}
           onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-          placeholder="Cerca nei documenti..."
+          placeholder="Cerca nei documenti (min 3 caratteri, debounce 400ms)..."
           style={{
             flex: 1, background: 'var(--bg-glass)', border: '1px solid var(--border-glass)',
             borderRadius: '12px', padding: '0.75rem 1rem', color: 'var(--text-primary)',

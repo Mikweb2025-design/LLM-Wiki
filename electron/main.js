@@ -130,9 +130,27 @@ function isPathWritable(p) {
 
 function isSourceNewer(src, dest) {
   try {
-    const srcStat = fs.statSync(path.join(src, 'app', 'main.py'));
-    const destStat = fs.statSync(path.join(dest, 'app', 'main.py'));
-    return srcStat.mtimeMs > destStat.mtimeMs;
+    // Controlla TUTTI i file backend rilevanti, non solo main.py
+    const filesToCheck = [
+      path.join(src, 'app', 'main.py'),
+      path.join(src, 'app', 'utils', 'database.py'),
+      path.join(src, 'app', 'utils', 'vector_store.py'),
+      path.join(src, 'app', 'utils', 'document_processor.py'),
+      path.join(src, 'app', 'utils', 'llm_handler.py'),
+      path.join(src, 'app', 'routers', 'chat.py'),
+      path.join(src, 'app', 'routers', 'documents.py'),
+      path.join(src, 'requirements.txt'),
+    ];
+    for (const srcFile of filesToCheck) {
+      try {
+        const rel = path.relative(src, srcFile);
+        const destFile = path.join(dest, rel);
+        const srcStat = fs.statSync(srcFile);
+        const destStat = fs.statSync(destFile);
+        if (srcStat.mtimeMs > destStat.mtimeMs) return true;
+      } catch {}
+    }
+    return false;
   } catch { return true; }
 }
 

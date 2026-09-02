@@ -11,21 +11,60 @@ USE_IONOS = bool(IONOS_API_KEY)
 _session = requests.Session()
 
 
-def chat_with_llm(query: str, context: List[Dict], model: str = None) -> str:
-    """Chatta con LLM usando IONOS (primario) e Ollama (fallback)"""
-    context_text = ""
+def _build_context_text(context: List[Dict], max_total_chars: int = 12000, per_doc_chars: int = 1800) -> str:
+    """Costruisce context troncato intelligente: max_total_chars totali, per_doc_chars per doc."""
+    if not context:
+        return "Nessun documento trovato nel contesto."
+    parts = []
+    total = 0
     for i, doc in enumerate(context, 1):
         filename = doc.get('metadata', {}).get('filename', 'sconosciuto')
-        content = doc.get('content', '')[:500]
-        context_text += f"[Documento {i}] {filename}:\n{content}\n\n"
+        content = (doc.get('content') or '').strip()
+        if not content:
+            continue
+        chunk = content[:per_doc_chars]
+        entry = f"[Documento {i}] {filename} (score:{doc.get('score','?')}):\n{chunk}"
+        if total + len(entry) > max_total_chars:
+            # tronca ultimo doc per stare nel budget
+            remaining = max_total_chars - total
+            if remaining > 300:
+                entry = entry[:remaining] + " [...troncato]"
+                parts.append(entry)
+            break
+        parts.append(entry)
+        total += len(entry)
+    return "\n\n".join(parts) if parts else "Nessun documento trovato nel contesto."
 
-    if not context_text.strip():
-        context_text = "Nessun documento trovato nel contesto."
 
-    messages = [
-        {"role": "system", "content": "Rispondi in italiano basandoti SOLO sui documenti forniti. Se non trovi info, dillo."},
-        {"role": "user", "content": f"Contesto:\n{context_text}\n\nDomanda: {query}"}
-    ]
+def chat_with_llm(query: str, context: List[Dict], model: str = None, history: List[Dict] = None) -> str:
+    """Chatta con LLM usando IONOS (primario) e Ollama (fallback).
+
+    history: lista di {role, content} per memoria conversazionale (ultimi 6 msg).
+    """
+    context_text = _build_context_text(context)
+
+    system_prompt = (
+        "Sei un assistente per una knowledge base Wiki. "
+        "Rispondi in italiano, basandoti SOLO sui documenti forniti nel Contesto. "
+        "Se l'informazione non è nei documenti, dillo esplicitamente e suggerisci cosa cercare. "
+        "Cita sempre il nome del documento tra parentesi quando usi un'informazione. "
+        "Risposta concisa ma completa, usa markdown quando utile."
+    )
+
+    messages = [{"role": "system", "content": system_prompt}]
+
+    # aggiungi history (max 6 turni per non esplodere context)
+    if history:
+        for h in history[-6:]:
+            role = h.get("role")
+            content = (h.get("content") or "").strip()
+            if role in ("user", "assistant") and content:
+                # evita di duplicare la query corrente
+                if role == "user" and content == query:
+                    continue
+                messages.append({"role": role, "content": content[:800]})
+
+    messages.append({"role": "user", "content": f"Contesto:\n{context_text}\n\nDomanda: {query}"})
 
     # Prima IONOS (cloud)
     if USE_IONOS:
@@ -52,14 +91,68 @@ def chat_with_llm(query: str, context: List[Dict], model: str = None) -> str:
 
     # Fallback Ollama (locale)
     try:
+        use_model = model or "llama3"
         response = ollama.chat(
-            model="llama3",
+            model=use_model,
             messages=messages,
-            options={"temperature": 0.3}
+            options={"temperature": 0.3, "num_ctx": 8192}
         )
         return response["message"]["content"]
     except Exception as e:
         return f"Errore: IONOS e Ollama non disponibili. {str(e)}"
+
+
+def chat_with_llm_stream(query: str, context: List[Dict], model: str = None, history: List[Dict] = None):
+    """Generator streaming per SSE: yield chunk di testo.
+
+    Usa IONOS con stream=True se disponibile, altrimenti fallback non-streaming a blocchi.
+    """
+    context_text = _build_context_text(context)
+    system_prompt = (
+        "Sei un assistente per una knowledge base Wiki. "
+        "Rispondi in italiano, basandoti SOLO sui documenti forniti. "
+        "Cita i documenti tra parentesi. Usa markdown."
+    )
+    messages = [{"role": "system", "content": system_prompt}]
+    if history:
+        for h in history[-6:]:
+            if h.get("role") in ("user", "assistant") and h.get("content"):
+                messages.append({"role": h["role"], "content": h["content"][:800]})
+    messages.append({"role": "user", "content": f"Contesto:\n{context_text}\n\nDomanda: {query}"})
+
+    # Prova IONOS streaming
+    if USE_IONOS:
+        try:
+            resp = _session.post(
+                f"{IONOS_BASE_URL}/chat/completions",
+                headers={"Authorization": f"Bearer {IONOS_API_KEY}", "Content-Type": "application/json"},
+                json={"model": IONOS_MODEL, "messages": messages, "temperature": 0.3, "max_tokens": 2048, "stream": True},
+                timeout=120, stream=True,
+            )
+            if resp.status_code == 200:
+                import json as _json
+                for line in resp.iter_lines(decode_unicode=True):
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        obj = _json.loads(data)
+                        delta = obj["choices"][0].get("delta", {}).get("content")
+                        if delta:
+                            yield delta
+                    except Exception:
+                        continue
+                return
+        except Exception as e:
+            print(f"[WARN] IONOS stream fallito: {e}")
+
+    # Fallback: chiamata non-streaming spezzata a chunk
+    text = chat_with_llm(query, context, model=model, history=history)
+    # yield a parole per simulare streaming
+    for word in text.split(" "):
+        yield word + " "
 
 
 @ttl_cache(seconds=60.0)

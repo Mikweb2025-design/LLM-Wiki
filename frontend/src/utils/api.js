@@ -10,6 +10,33 @@ const api = axios.create({
 export const chatApi = {
   sendMessage: (message, history = [], model = null) =>
     api.post('/api/chat/', { message, history, model }),
+  // streaming via fetch + SSE
+  sendMessageStream: async (message, history = [], model = null, onToken, onDone) => {
+    const res = await fetch(`${API_URL}/api/chat/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, history, model }),
+    });
+    if (!res.ok) throw new Error(`Stream failed ${res.status}`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data:')) continue;
+        try {
+          const data = JSON.parse(line.slice(5).trim());
+          if (data.token) onToken?.(data.token);
+          if (data.done) onDone?.(data);
+        } catch {}
+      }
+    }
+  },
   getHistory: () => api.get('/api/chat/history'),
   getModels: () => api.get('/api/chat/models'),
 };
@@ -22,7 +49,8 @@ export const documentsApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
-  list: () => api.get('/api/documents/'),
+  list: (params = {}) => api.get('/api/documents/', { params }),
+  listPaginated: (limit = 50, offset = 0) => api.get('/api/documents/paginated', { params: { limit, offset } }),
   delete: (filename) => api.delete(`/api/documents/${encodeURIComponent(filename)}`),
   batchDelete: (filenames) => api.delete('/api/documents/batch', { data: { filenames } }),
   batchReindex: (filenames) => api.post('/api/documents/batch-reindex', { filenames }),
@@ -39,7 +67,16 @@ export const documentsApi = {
   summary: (filename) => api.get(`/api/documents/summary/${encodeURIComponent(filename)}`),
   stats: () => api.get('/api/documents/stats'),
   similar: (filename) => api.get(`/api/documents/similar/${encodeURIComponent(filename)}`),
+  related: (filename) => api.get(`/api/documents/${encodeURIComponent(filename)}/related`),
   activity: (limit = 20) => api.get('/api/documents/activity', { params: { limit } }),
+  // tags / favorites
+  getTags: () => api.get('/api/documents/tags'),
+  getDocsByTag: (tag) => api.get(`/api/documents/tags/${encodeURIComponent(tag)}`),
+  getDocTags: (filename) => api.get(`/api/documents/${encodeURIComponent(filename)}/tags`),
+  addTag: (filename, tag) => api.post(`/api/documents/${encodeURIComponent(filename)}/tags`, { tag }),
+  removeTag: (filename, tag) => api.delete(`/api/documents/${encodeURIComponent(filename)}/tags/${encodeURIComponent(tag)}`),
+  getFavorites: () => api.get('/api/documents/favorites/list'),
+  toggleFavorite: (filename) => api.post(`/api/documents/${encodeURIComponent(filename)}/favorite`),
 };
 
 export const statusApi = {

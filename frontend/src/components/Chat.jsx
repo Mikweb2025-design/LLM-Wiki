@@ -95,6 +95,7 @@ function Chat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(true); // nuova funzione: streaming toggle
   const [selectedModel, setSelectedModel] = useState('');
   const [models, setModels] = useState([]);
   const messagesEndRef = useRef(null);
@@ -127,8 +128,61 @@ function Chat() {
     const userInput = text;
     if (!messageText) setInput('');
     setIsLoading(true);
+
+    const history = messages.map((m) => ({ role: m.role, content: m.content }));
+
+    // Streaming path (SSE) — performance percepita molto migliore
+    if (isStreaming) {
+      let acc = '';
+      // placeholder assistant msg per streaming
+      setMessages((prev) => [...prev, { role: 'assistant', content: '', sources: [], provider: '…', streaming: true }]);
+      try {
+        await chatApi.sendMessageStream(userInput, history, selectedModel || null,
+          (token) => {
+            acc += token;
+            setMessages((prev) => {
+              const copy = [...prev];
+              const last = copy[copy.length - 1];
+              if (last && last.streaming) last.content = acc;
+              return copy;
+            });
+          },
+          (doneData) => {
+            setMessages((prev) => {
+              const copy = [...prev];
+              const last = copy[copy.length - 1];
+              if (last && last.streaming) {
+                last.streaming = false;
+                last.sources = doneData?.sources || [];
+                last.model = doneData?.model || selectedModel || '';
+                const mi = last.model || '';
+                last.provider = mi.includes('(Ollama)') ? 'Ollama' : mi.includes('(IONOS)') ? 'IONOS' : 'AI';
+              }
+              return copy;
+            });
+          }
+        );
+      } catch (error) {
+        setMessages((prev) => {
+          const copy = [...prev];
+          const last = copy[copy.length - 1];
+          if (last && last.streaming) {
+            last.content = `Error: ${error.message}`;
+            last.error = true;
+            last.streaming = false;
+          } else {
+            copy.push({ role: 'assistant', content: `Error: ${error.message}`, error: true });
+          }
+          return copy;
+        });
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // Fallback non-streaming
     try {
-      const history = messages.map((m) => ({ role: m.role, content: m.content }));
       const res = await chatApi.sendMessage(userInput, history, selectedModel || null);
       const modelInfo = res.data.model || selectedModel || '';
       const provider = modelInfo.includes('(Ollama)') ? 'Ollama' : modelInfo.includes('(IONOS)') ? 'IONOS' : 'AI';
@@ -143,7 +197,7 @@ function Chat() {
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, messages, selectedModel]);
+  }, [input, isLoading, messages, selectedModel, isStreaming]);
 
   const clearChat = useCallback(() => setMessages([]), []);
   const copyMessage = useCallback((content) => { navigator.clipboard.writeText(content); }, []);
@@ -173,6 +227,10 @@ function Chat() {
           Knowledge Chat
         </h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={isStreaming} onChange={(e) => setIsStreaming(e.target.checked)} style={{ accentColor: 'var(--accent-blue)' }} />
+            stream
+          </label>
           <select
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}

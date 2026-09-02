@@ -143,9 +143,46 @@ async def upload_document(file: UploadFile = File(...)):
 
 
 @router.get("/", response_model=list[DocumentInfo])
-async def list_documents():
-    """Lista tutti i documenti indicizzati"""
-    docs = get_all_documents()
+async def list_documents(limit: int = 100, offset: int = 0, extension: str = None, q: str = None, sort: str = "recent"):
+    """Lista documenti con pagination + filtri server-side (performance).
+
+    - limit/offset: paginazione (default 100 per evitare payload enormi)
+    - extension: filtro per estensione (es. .pdf)
+    - q: filtro substring su filename (case-insensitive)
+    - sort: recent|name|size
+    """
+    from app.utils.database import get_documents_paginated
+
+    # Se ci sono filtri, filtra in Python su set paginato grande
+    # Per dataset > 10k, questo andrebbe fatto in SQL; per ora ok per <5k docs
+    if extension or q:
+        docs = get_all_documents()
+        if extension and extension != "all":
+            ext_lower = extension.lower()
+            docs = [d for d in docs if ext_lower in (d.get("extension") or "").lower()]
+        if q:
+            ql = q.lower()
+            docs = [d for d in docs if ql in (d.get("filename") or "").lower()]
+        # sort
+        if sort == "name":
+            docs.sort(key=lambda d: d.get("filename", "").lower())
+        elif sort == "size":
+            docs.sort(key=lambda d: d.get("size_bytes", 0), reverse=True)
+        # paginate dopo filtro
+        docs = docs[offset: offset + limit]
+    else:
+        if sort == "name":
+            # fallback: fetch all e sort, poi slice (paginazione nominativa richiede scan completo)
+            docs = get_all_documents()
+            docs.sort(key=lambda d: d.get("filename", "").lower())
+            docs = docs[offset: offset + limit]
+        elif sort == "size":
+            docs = get_all_documents()
+            docs.sort(key=lambda d: d.get("size_bytes", 0), reverse=True)
+            docs = docs[offset: offset + limit]
+        else:
+            docs = get_documents_paginated(offset=offset, limit=limit)
+
     result = []
     for doc in docs:
         result.append(DocumentInfo(
@@ -157,6 +194,15 @@ async def list_documents():
             indexed=True,
         ))
     return result
+
+
+@router.get("/paginated")
+async def list_documents_paginated(limit: int = 50, offset: int = 0):
+    """Alias paginato con conteggio totale per UI."""
+    from app.utils.database import get_documents_paginated
+    docs = get_documents_paginated(offset=offset, limit=limit)
+    total = get_document_count()
+    return {"documents": docs, "total": total, "limit": limit, "offset": offset, "has_more": (offset + limit) < total}
 
 
 @router.delete("/{filename}")
@@ -794,24 +840,86 @@ async def get_activity(limit: int = 20):
 
 @router.get("/stats")
 async def get_documents_stats():
-    """Aggregate veloce per Dashboard — niente lista, solo conteggi.
-    Evita di scaricare 399 righe quando servono solo gli aggregati."""
+    """Aggregate veloce per Dashboard — query SQL aggregate (1-2 query, non O(N) Python)."""
     from app.utils.vector_store import get_store_stats
-    from app.utils.database import get_total_size, get_document_count
-    docs = get_all_documents() or []
-    by_ext: dict = {}
-    total_size = 0
-    for d in docs:
-        ext = (d.get("extension") or ".unknown").lower()
-        by_ext[ext] = by_ext.get(ext, 0) + 1
-        total_size += d.get("size_bytes") or 0
-    by_ext_sorted = sorted(by_ext.items(), key=lambda kv: kv[1], reverse=True)
-    total_words = int(total_size / 1024 * 500)  # approx 500 words per 1KB
+    from app.utils.database import get_stats_aggregates
+    agg = get_stats_aggregates()
     return {
-        "total_documents": len(docs),
+        "total_documents": agg["total_documents"],
         "total_chunks": get_store_stats().get("total_chunks", 0),
-        "total_size_bytes": total_size,
-        "total_words": total_words,
-        "by_extension": [{"ext": k, "count": v} for k, v in by_ext_sorted],
-        "recent": docs[:8],
+        "total_size_bytes": agg["total_size_bytes"],
+        "total_words": agg["total_words"],
+        "by_extension": agg["by_extension"],
+        "recent": agg["recent"],
     }
+
+
+# ---------------------------------------------------------------------------
+# Tags / Favorites — nuove funzioni utili
+# ---------------------------------------------------------------------------
+
+@router.get("/tags")
+async def list_all_tags():
+    """Lista tutti i tag con conteggio documenti."""
+    from app.utils.database import get_all_tags
+    return {"tags": get_all_tags()}
+
+
+@router.get("/tags/{tag}")
+async def get_docs_by_tag(tag: str):
+    """Documenti con un tag specifico."""
+    from app.utils.database import get_documents_by_tag
+    docs = get_documents_by_tag(tag)
+    return {"tag": tag, "documents": docs, "count": len(docs)}
+
+
+@router.get("/{filename}/tags")
+async def get_doc_tags(filename: str):
+    """Tag di un documento."""
+    from app.utils.database import get_document_tags
+    return {"filename": filename, "tags": get_document_tags(filename)}
+
+
+@router.post("/{filename}/tags")
+async def add_doc_tag(filename: str, payload: dict):
+    """Aggiunge tag a un documento."""
+    from app.utils.database import add_tag, get_document
+    if not get_document(filename):
+        raise HTTPException(status_code=404, detail="Documento non trovato")
+    tag = (payload.get("tag") or "").strip()
+    if not tag:
+        raise HTTPException(status_code=400, detail="Tag mancante")
+    ok = add_tag(filename, tag)
+    return {"status": "added" if ok else "exists", "filename": filename, "tag": tag.lower()}
+
+
+@router.delete("/{filename}/tags/{tag}")
+async def delete_doc_tag(filename: str, tag: str):
+    """Rimuove tag."""
+    from app.utils.database import remove_tag
+    remove_tag(filename, tag)
+    return {"status": "removed", "filename": filename, "tag": tag}
+
+
+@router.get("/favorites/list")
+async def list_favorites():
+    """Lista documenti preferiti."""
+    from app.utils.database import get_favorites
+    return {"favorites": get_favorites()}
+
+
+@router.post("/{filename}/favorite")
+async def toggle_doc_favorite(filename: str):
+    """Toggle preferito."""
+    from app.utils.database import toggle_favorite, get_document
+    if not get_document(filename):
+        raise HTTPException(status_code=404, detail="Documento non trovato")
+    is_fav = toggle_favorite(filename)
+    return {"filename": filename, "favorite": is_fav}
+
+
+@router.get("/{filename}/related")
+async def get_related_documents(filename: str, n_results: int = 5):
+    """Alias per similar — endpoint più intuitivo per frontend."""
+    # riusa logica similar
+    return await find_similar_documents(filename, n_results=n_results)
