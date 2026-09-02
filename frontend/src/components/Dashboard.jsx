@@ -16,6 +16,7 @@ function Dashboard() {
 
   const loadData = async () => {
     setLoading(true);
+    let docCountForInsights = 0;
     try {
       // Strategia veloce: /api/documents/stats aggrega tutto lato server (un sola query).
       // Fallback: vecchia coppia /api/status + /api/documents/ se /stats non c'e (backend vecchio).
@@ -36,6 +37,7 @@ function Dashboard() {
         });
         setDocuments(s.recent || []);
         setActivity(activityRes.data?.activities || []);
+        docCountForInsights = s.total_documents || 0;
       } catch (innerErr) {
         // fallback
         const [statusRes, docsRes] = await Promise.all([
@@ -44,14 +46,14 @@ function Dashboard() {
         ]);
         setStats(statusRes.data);
         setDocuments(docsRes.data || []);
+        docCountForInsights = statusRes.data?.total_documents ?? docsRes.data?.length ?? 0;
       }
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
-      // Load insights after stats are available (skip if 0 documents)
-      const docCount = stats?.total_documents ?? 0;
-      if (docCount > 0) {
+      // Usa il valore appena fetchato, non lo state stale
+      if (docCountForInsights > 0) {
         loadInsights();
       }
     }
