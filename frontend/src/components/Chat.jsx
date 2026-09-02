@@ -130,7 +130,7 @@ function Chat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(true); // nuova funzione: streaming toggle
+  const [isStreaming, setIsStreaming] = useState(false); // default off per stabilità — streaming riattivabile via toggle
   const [selectedModel, setSelectedModel] = useState('');
   const [models, setModels] = useState([]);
   const messagesEndRef = useRef(null);
