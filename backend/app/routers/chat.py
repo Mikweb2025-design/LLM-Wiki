@@ -82,9 +82,10 @@ async def _try_build_chart(query: str, context) -> dict | None:
                 filenames.append(fn)
 
         low = query.lower()
-        # Se query chiede "tutti i miei guadagni / tutte le spese" → prendi TUTTI i doc rilevanti per preset
+        # Se query chiede guadagni/stipendi o "tutti" → prendi TUTTI i doc rilevanti per preset (non solo i top 8 semantici che spesso sono rumore)
         is_all = any(k in low for k in ["tutti", "tutte", "tutto", "all", "alle"])
-        if is_all or len(filenames) < 3:
+        is_guadagni = any(k in low for k in ["guadagn", "stipend", "earnings", "income", "gehalt", "lohn", "mie guadagni", "miei guadagni"])
+        if is_all or is_guadagni or len(filenames) < 3:
             try:
                 from app.utils.database import get_all_documents
                 all_docs = get_all_documents() or []
@@ -190,8 +191,10 @@ async def chat(request: ChatRequest):
     if _detect_chart_intent(request.message):
         chart = await _try_build_chart(request.message, context)
         if chart:
-            # aggiungi nota nella risposta se non già presente
-            if "grafico" not in answer.lower() and "chart" not in answer.lower():
+            # Se LLM dice "non posso creare grafico" ma noi lo abbiamo creato, sovrascrivi con nota positiva
+            if "non posso" in answer.lower() and "grafico" in answer.lower():
+                answer += f"\n\n📊 *Grafico generato con successo dai tuoi documenti ({chart['preset']} per {chart['group_by']}, totale {chart['total']}€ su {chart['count']} documenti).*"
+            elif "grafico" not in answer.lower() and "chart" not in answer.lower():
                 answer += f"\n\n📊 *Grafico generato automaticamente ({chart['preset']} per {chart['group_by']}, totale {chart['total']}€).*"
 
     return ChatResponse(answer=answer, sources=sources, model=f"{model} ({provider})", chart=chart)
