@@ -1,6 +1,6 @@
 # 📚 LLM Wiki
 
-> Intelligent RAG wiki — chat (text + voice) over your documents. Fast hybrid search, streaming answers, desktop app.
+> Intelligent RAG wiki — chat (text + voice) over your documents. Fast hybrid search, streaming answers, auto-tagged library, configurable charts — even from chat.
 
 ![LLM Wiki](screenshots/dashboard.png)
 
@@ -11,81 +11,94 @@
 ## ✨ Features
 
 ### 💬 Intelligent Chat
-- **Text chat** with citations — answers grounded in your docs
-- **Streaming SSE** (`POST /api/chat/stream`) — token-by-token, ~3× perceived speed
+- **Text chat** with citations — grounded in your docs
+- **Streaming SSE** (`POST /api/chat/stream`) — token-by-token, toggle `stream` in header (default off for stability)
 - **Voice input** → Vosk offline STT + WebSpeech fallback
-- **Conversation memory** — last 6 turns sent as context
+- **Conversation memory** — last 6 turns
 - **History** persisted in SQLite (`GET /api/chat/history`)
+- **Smart charts from chat** — ask *“fammi un grafico di tutti i miei guadagni”* or *“quanto ho speso per benzina? fammi un grafico”* → `POST /api/chat/` returns `{answer, sources, chart}` rendered inline as mini bar chart (auto preset `stipendi`/`spese`, group by month, cached 1h, parallel 4 workers: 50s → 14s cold, 6s cached)
 
 ### 📄 Document Management
 - **Multi-format**: PDF (native + OCR), images (Tesseract), Excel (streaming), Word, PPTX, CSV, HTML/MD, TXT
-- **Batch + cached ingestion**: 30-min mtime-aware cache, batched Chroma embeddings (32 chunks/batch)
+- **Batch + cached ingestion**: 30-min mtime cache, batched Chroma embeddings (32/batch)
 - **Auto-scan** `backend/data/documents/` + custom folders (`POST /api/documents/scan-custom`)
-- **Drag & drop upload** (50 MB limit) + background scan with progress polling (`/scan-status`)
+- **Drag & drop upload** (50 MB) + background scan with progress (`/scan-status`)
+- **Auto-tag** — on upload/scan every doc is classified (`fattura`, `stipendio`, `contratto`, `assicurazione`, `bolletta`, `identità`, `medico`, `legale`, `foto`, `altro`) via keyword + snippet; filter by tag in Documents, `POST /auto-tag/all` for bulk
 
 ### 🔍 Hybrid Search
-- **Semantic** (Ollama `nomic-embed-text` + Chroma) **+ TF-IDF keyword** fused via **Reciprocal Rank Fusion (RRF, k=60)**
-- Stop-word filtering, clamped `k=20`, 500-hit prune — no more `score=-matches` naive scan
-- Filter by extension / filename, debounced 400 ms in UI
+- **Semantic** (`nomic-embed-text` + Chroma) **+ TF-IDF keyword** fused via **RRF (k=60)**
+- Stop-word filtering, `k≤20`, 500-hit prune — no more `score=-matches`
+- Filter by extension/filename/tag, debounced 400 ms
 
-### 📈 Analysis & Compare
-- **Side-by-side document compare** with high-contrast diff (fixed contrast regression)
-- **AI summaries** (`GET /api/documents/summary/{file}`) and **insights** (cached 10 min)
-- **Similar documents** via vector similarity (`/api/documents/similar/{file}` + `/related`)
-- **Tags & Favorites** (SQLite) — `POST /{file}/tags`, `POST /{file}/favorite`
+### 📊 Analytics & Charts — user-configurable
+- **Analytics tab** (`Grafici`/`Charts`/`Diagramme`): multi-select docs, preset (`fatture`/`spese`/`stipendi`/`custom`), **field selector** (`importo`/`importo_netto`/`importo_lordo`), group by (`month`/`categoria`/`fornitore`), chart type (Bar/Line/Pie/Table) — SVG custom, no external dep, `POST /api/analytics/aggregate` with `sum_field` override
+- **Excel/CSV** parsed directly (no LLM), **PDF** via LLM JSON + regex fallback + **parallel 4 workers + cache** (36s → 9s)
+- **Table + JSON copy** + raw rows preview
+
+### 📈 Compare & Insights
+- **Side-by-side compare** high-contrast diff
+- **AI summaries** (`/summary/{file}`) and **insights** (cached 10 min, fixed stale-closure bug)
+- **Similar documents** (`/similar/{file}` + `/related`)
+- **Tags & Favorites** — `POST /{file}/tags`, `POST /{file}/favorite`, `GET /tags/map` for UI
+
+### 🌍 Multi-Language
+- **IT / EN / DE** flag switcher top-right, persisted in `localStorage`, all tabs + Analytics + Roadmap translated via `frontend/src/utils/i18n.js`
 
 ### 📊 Dashboard
-- Real-time stats via **single SQL aggregate** (`COUNT+SUM+GROUP BY` — not O(N) Python)
-- Charts by type, recent docs, activity timeline
+- Real-time stats via **single SQL aggregate** (`COUNT+SUM+GROUP BY`)
+- Charts by type, recent docs (8), activity timeline, **Quick Actions** now navigate correctly (`onNavigate` prop)
 
 ### 🖥️ Cross-Platform
-- **Web** at `http://localhost:3000` / `http://127.0.0.1:3456`
+- **Web** `http://localhost:3000` / `http://127.0.0.1:3456`
 - **Desktop** macOS/Win/Linux via Electron (extraResources, isolated userData venv)
-- **REST API** at `http://localhost:8000/docs`
+- **REST API** `http://localhost:8000/docs`
 
 ---
 
 ## 📸 Screenshots
 
-| Dashboard | Chat (streaming) | Compare | Documents |
+| Dashboard (tag filter) | Chat (chart inline) | Analytics (bar) | Documents (auto-tag) |
 |---|---|---|---|
-| ![Dashboard](screenshots/dashboard.png) | ![Chat](screenshots/chat.png) | ![Compare](screenshots/compare.png) | ![Documents](screenshots/documents.png) |
+| ![Dashboard](screenshots/dashboard.png) | ![Chat](screenshots/chat.png) | ![Analytics](screenshots/compare.png) | ![Documents](screenshots/documents.png) |
+
+*Screenshots rebuilt 2026-09-02 — `main.46b83e82.js` (127.6 kB gzip)*
 
 ---
 
-## 🚀 Performance (what's new in v1.1 — 2026-09-02)
+## 🚀 Performance (what's new in v1.2 — 2026-09-02)
 
 | Area | Before | After | File |
 |---|---|---|---|
-| **Search** | keyword `O(N)` + `score=-count` + `k=40` embeddings | **RRF + TF-IDF**, stopwords, `k≤20`, 500 prune | `backend/app/utils/vector_store.py:109` |
-| **Embeddings** | one `add_texts` for whole doc (OOM) | **batched 32** chunks | `vector_store.py:47` |
-| **LLM context** | `500` chars/doc, no history | **`12 000` total / `1 800` per doc + 6 turns** | `backend/app/utils/llm_handler.py:14` |
-| **Chat** | blocking `POST /api/chat/` | **SSE `POST /api/chat/stream`** + toggle | `backend/app/routers/chat.py:55` + `frontend/src/components/Chat.jsx:98` |
-| **Excel ingest** | `load_workbook` full RAM | **`read_only` streaming + empty-row guard** | `document_processor.py:42` |
-| **DB stats** | `get_all_documents()` loop in Python | **SQL `COUNT/SUM/GROUP BY`** | `database.py:256` + `documents.py:841` |
-| **Docs list** | unpaginated (400 rows) | **`limit/offset/filter/sort`** + `GET /paginated` | `documents.py:146` |
-| **Search UI** | fire on every keystroke | **debounce 400 ms** | `SearchWithFilters.jsx:8` |
-| **Contrast** | `text-secondary` diff barely visible | **`text-primary` / `#ffcc88` + stronger border** | `CompareDocuments.jsx:242` |
-| **Cache** | doc text TTL 30 min | **+ collection snapshot 5 min + mtime invalidation** | `document_processor.py:10` + `vector_store.py:18` |
-| **Missing formats** | PPTX/CSV/HTML fell to raw `open()` | **dedicated extractors** | `document_processor.py:88` |
-| **Deps** | `pypdf` missing → scan fails in Electron venv | **added `pypdf>=4.0.0`** | `backend/requirements.txt:8` |
+| **Search** | keyword `O(N)` + `k=40` | **RRF + TF-IDF**, stopwords, `k≤20`, 500 prune | `vector_store.py:109` |
+| **Embeddings** | one `add_texts` (OOM) | **batched 32** | `vector_store.py:47` |
+| **LLM context** | `500` chars/doc | **`12k` total / `1.8k` per doc + 6 turns** | `llm_handler.py:14` |
+| **Chat** | blocking | **SSE** + default off (was hanging) | `chat.py:55`, `Chat.jsx:98` |
+| **Chart from chat** | N/A (50s) | **detect strict `grafico|chart` + cache + parallel 4 → 14s cold, 6s cached** | `chat.py:16`, `analytics.py:16` |
+| **Analytics extract** | sequential 12×3s = 36s | **ThreadPool 4 + cache 1h → 9s** | `analytics.py:220` |
+| **Excel** | full RAM | **`read_only` streaming** | `document_processor.py:42` |
+| **DB stats** | `get_all_documents()` loop | **SQL aggregate** | `database.py:256` |
+| **Docs list** | unpaginated | **`limit/offset/filter/sort` + tag filter** | `documents.py:146` |
+| **Auto-tag** | manual | **keyword auto on upload/scan + bulk `/auto-tag/all`** | `auto_tagger.py:1`, `documents.py:267` |
+| **Contrast** | `text-secondary` barely visible | **`text-primary/#ffcc88`** | `CompareDocuments.jsx:242` |
+| **Cache** | doc TTL 30m | **+ snapshot 5m + extract 1h** | `document_processor.py:10`, `analytics.py:16` |
+| **Deps** | `pypdf` missing | **`pypdf>=4.0.0`** | `requirements.txt:8` |
 
-Measured: `118.6 kB` gzip frontend, `415 kB` raw, `SQLite aggregates 1 query` vs `~400 row fetch`.
+Measured: `127.6 kB` gzip frontend, `SQLite 1 query` for stats, `81 docs` auto-tagged in <10s.
 
 ---
 
 ## 📋 Requirements
 
 ### Backend
-- **Python 3.13** (tested; 3.9+ works)
-- **Ollama** — https://ollama.ai (`nomic-embed-text` for embeddings, `llama3` fallback)
-- **Tesseract + Poppler** — `brew install tesseract tesseract-lang poppler` (OCR)
+- **Python 3.13** (3.9+ works)
+- **Ollama** — `nomic-embed-text` + `llama3` fallback
+- **Tesseract + Poppler** — `brew install tesseract tesseract-lang poppler`
 
 ### Frontend
-- **Node.js 18+**, npm
+- **Node.js 18+**
 
 ### Desktop
-- **Electron 35** (bundled)
+- **Electron 35**
 
 ---
 
@@ -94,27 +107,16 @@ Measured: `118.6 kB` gzip frontend, `415 kB` raw, `SQLite aggregates 1 query` vs
 ```bash
 git clone https://github.com/Mikweb2025-design/LLM-Wiki.git
 cd LLM-Wiki
-
-# backend
 cd backend && pip install -r requirements.txt && cd ..
-
-# frontend
 cd frontend && npm install && cd ..
-
-# ollama
 ollama pull llama3 && ollama pull nomic-embed-text && ollama serve &
-
-# run (manual)
 ./start.sh
 # or
-# Terminal 1
-cd backend && python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-# Terminal 2
-cd frontend && npm start
+#   backend:  python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+#   frontend: npm start
 ```
 
-App: **http://localhost:3000** (manual) or **http://127.0.0.1:3456** (Electron).  
-API: **http://localhost:8000/docs**.
+App: **http://localhost:3000** or **http://127.0.0.1:3456** (Electron) · API: **http://localhost:8000/docs**
 
 ---
 
@@ -126,15 +128,13 @@ API: **http://localhost:8000/docs**.
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3
 OLLAMA_EMBED_MODEL=nomic-embed-text
-IONOS_API_KEY=...            # optional — primary LLM
+IONOS_API_KEY=...            # primary LLM
 IONOS_MODEL=meta-llama/Llama-3.3-70B-Instruct
 IONOS_BASE_URL=https://openai.inference.de-txl.ionos.com/v1
 HOST=0.0.0.0
 PORT=8000
 ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3456,http://127.0.0.1:3000
 ```
-
-Frontend: `frontend/src/utils/api.js` → `API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000'`.
 
 ---
 
@@ -144,41 +144,42 @@ Frontend: `frontend/src/utils/api.js` → `API_URL = process.env.REACT_APP_API_U
 LLM-Wiki/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py              # lifespan prewarm, GZip, CORS, Server-Timing
+│   │   ├── main.py              # prewarm, GZip, CORS, Server-Timing
 │   │   ├── routers/
-│   │   │   ├── chat.py          # /api/chat + /stream (SSE) + history
-│   │   │   ├── documents.py     # upload/scan/content/summary/tags/favorites
-│   │   │   ├── voice.py         # Vosk STT
+│   │   │   ├── chat.py          # /api/chat + /stream + smart chart intent
+│   │   │   ├── analytics.py     # /api/analytics/* (presets/extract/aggregate) + cache+parallel
+│   │   │   ├── documents.py     # upload/scan/tags/auto-tag/paginated
+│   │   │   ├── voice.py
 │   │   │   └── status.py
 │   │   ├── utils/
-│   │   │   ├── document_processor.py  # PDF/Excel/PPTX/CSV/HTML/OCR + mtime cache
-│   │   │   ├── vector_store.py        # Chroma + RRF hybrid
-│   │   │   ├── llm_handler.py         # IONOS→Ollama + streaming + context builder
-│   │   │   ├── database.py            # SQLite WAL + indexes + aggregates
-│   │   │   └── cache.py               # TTL cache decorator
-│   │   └── models/schemas.py
-│   ├── data/documents/          # 81 demo docs (git-ignored in prod)
-│   ├── chroma_db/               # vector store (git-ignored)
+│   │   │   ├── auto_tagger.py       # keyword auto-tag (fattura/stipendio/...)
+│   │   │   ├── document_processor.py
+│   │   │   ├── vector_store.py
+│   │   │   ├── llm_handler.py
+│   │   │   └── database.py
+│   │   └── models/schemas.py    # ChatResponse.chart
+│   ├── data/documents/          # 81 docs
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── Dashboard.jsx        # stats via /api/documents/stats
-│   │   │   ├── Chat.jsx             # streaming toggle + memo bubbles
-│   │   │   ├── CompareDocuments.jsx # high-contrast diff
-│   │   │   ├── DocumentList.jsx     # paginated, batch actions
-│   │   │   ├── SearchWithFilters.jsx# debounced hybrid search
+│   │   │   ├── Dashboard.jsx        # + tag filter, fixed insights closure
+│   │   │   ├── Chat.jsx             # ChatMiniChart + streaming toggle (default off)
+│   │   │   ├── Analytics.jsx        # Bar/Line/Pie/Table + sum_field selector
+│   │   │   ├── DocumentList.jsx     # tagsMap, Auto-Tag button, tag filter
+│   │   │   ├── Roadmap.jsx
 │   │   │   └── ...
-│   │   ├── utils/api.js           # axios + SSE helper
-│   │   └── index.css              # glass-morphism theme
-│   └── build/                     # → NOT versioned (see DEPLOY.md)
-├── frontend-build/              # versioned copy served by Electron
+│   │   ├── utils/
+│   │   │   ├── i18n.js              # IT/EN/DE dict + flag switcher
+│   │   │   └── api.js               # chatApi.stream + documentsApi
+│   │   └── index.css
+│   └── build/  → NOT versioned
+├── frontend-build/  # versioned copy for Electron
 ├── electron/
-│   ├── main.js                  # isSourceNewer multi-file, venv, port kill
-│   ├── serve-build.js
-│   ├── package.json             # extraResources: frontend-build + backend/app
-│   └── dist/mac-arm64/          # .app + .dmg (git-ignored)
-├── DEPLOY.md                    # authoritative deploy guide
+│   ├── main.js      # multi-file isSourceNewer, venv, port kill
+│   └── dist/mac-arm64/ # .app + .dmg
+├── ROADMAP.md   # Nextcloud/WebDAV + smart charts
+├── DEPLOY.md
 └── README.md
 ```
 
@@ -187,37 +188,41 @@ LLM-Wiki/
 ## 🔌 API Reference
 
 ### Chat
-- `POST /api/chat/` — `{message, history?, model?}` → `{answer, sources, model}`
-- `POST /api/chat/stream` — SSE `data: {"token": "..."}` + final `{"done":true, sources}`
-- `GET /api/chat/history` / `GET /api/chat/models`
+- `POST /api/chat/` — `{message, history?, model?}` → `{answer, sources, model, chart?}` (`chart` present when `grafico|chart` detected)
+- `POST /api/chat/stream` — SSE `data: {"token": "..."}` + `{"done":true, sources, chart?}`
+- `GET /api/chat/history` / `models`
+
+### Analytics (Charts)
+- `GET /api/analytics/presets` — `{fatture, spese, stipendi, custom}`
+- `POST /api/analytics/extract` — `{filenames, preset, custom_fields?, custom_prompt?, use_llm?}` → `{results:[{extracted, source}]}`
+- `POST /api/analytics/aggregate` — `{filenames, preset, group_by, sum_field?, use_llm?}` → `{chart_data:[{label, value, count}], total, rows}`
 
 ### Documents
-- `POST /api/documents/upload` (multipart, 50 MB)
-- `GET /api/documents/?limit=&offset=&extension=&q=&sort=` — paginated
-- `GET /api/documents/paginated?limit=&offset=` + `GET /api/documents/count`
-- `POST /api/documents/scan` (background) + `GET /api/documents/scan-status` (poll)
-- `POST /api/documents/scan-custom` `{directory}` + `/folders` CRUD
-- `GET /api/documents/content/{file}?max_length=50000` — `{content, length, extractable, reason}`
-- `GET /api/documents/preview/{file}` (FileResponse)
-- `GET /api/documents/summary/{file}?max_length=500`
-- `GET /api/documents/insights?refresh=1` (cached 10 min)
-- `GET /api/documents/similar/{file}?n_results=` + `GET /{file}/related`
-- `GET /api/documents/search?q=` + `POST /{file}/tags` / `GET /tags` / `POST /{file}/favorite`
-- `DELETE /api/documents/{file}` / `DELETE /api/documents/batch` / `POST /batch-reindex`
+- `POST /api/documents/upload` (50 MB)
+- `GET /api/documents/?limit&offset&extension&q&sort` — paginated
+- `GET /api/documents/paginated` + `count`
+- `POST /api/documents/scan` (bg) + `GET /scan-status`
+- `POST /api/documents/scan-custom` + `/folders` CRUD
+- `GET /api/documents/content/{file}?max_length=50000`
+- `GET /api/documents/summary/{file}` / `insights?refresh=1` / `similar/{file}`
+- `POST /api/documents/auto-tag/all?force=false` + `POST /auto-tag/{file}` + `GET /tags` + `GET /tags/map` + `GET /tags/{tag}` + `POST /{file}/tags` + `POST /{file}/favorite`
+- `DELETE /{file}` / `batch`
 
 ### System
-- `GET /health` (15 s poll) / `GET /health/full` / `GET /metrics` / `GET /api/status/`
+- `GET /health` / `health/full` / `metrics` / `api/status/`
 
 ---
 
 ## 📖 Usage
 
-1. **Upload**: drag & drop in **📤 Upload** or copy to `backend/data/documents/` → **🔄 Scan**
-2. **Chat**: type or 🎤, toggle **stream** for live tokens
-3. **Search**: min 3 chars, debounced, filter by type/size
-4. **Compare**: pick two docs → **🔍 Compare** (handles truncated/OCR warnings)
+1. **Upload**: drag & drop in **Upload** or copy to `backend/data/documents/` → **Scan** (auto-tagged)
+2. **Chat**: type or 🎤 — try *“Fammi un grafico di tutti i miei guadagni”* or *“quanto ho speso per benzina? fammi un grafico”* → inline chart (14s cold, 6s cached)
+3. **Analytics**: **Grafici** tab → select docs → preset → field (`importo_lordo` for stipendi) → group by → **Genera**
+4. **Search**: debounced, filter by type/size/tag
+5. **Documents**: filter by tag (`fattura` 40, `stipendio` 22), **Auto-Tag** button, batch reindex
+6. **Compare**: pick 2 docs → **Confronta**
 
-Supported: `pdf` (text+OCR) · `png/jpg/webp` · `xlsx/xls` · `docx` · `pptx` · `csv` · `html/md` · `txt/rtf`
+Supported: `pdf` · `png/jpg/webp` · `xlsx/xls` · `docx` · `pptx` · `csv` · `html/md` · `txt/rtf`
 
 ---
 
@@ -226,18 +231,18 @@ Supported: `pdf` (text+OCR) · `png/jpg/webp` · `xlsx/xls` · `docx` · `pptx` 
 ```bash
 cd electron
 npm install
-npm start          # dev, loads frontend-build on :3456
-npm run dev        # dev, loads http://localhost:3000
+npm start          # dev :3456
+npm run dev        # dev :3000
 npm run build:mac  # → dist/mac-arm64/LLM Wiki.app + .dmg
 ```
 
-Every frontend/backend change **must** be synced before `build:mac`:
+Sync before `build:mac`:
 
 ```bash
 cd frontend && npm run build && rm -rf ../frontend-build/* && cp -r build/* ../frontend-build/
 ```
 
-See **DEPLOY.md** for the full patch-without-rebuild recipe, writable-backend cache invalidation, and data migration (`backend/data/documents` → `~/Library/Application Support/llm-wiki-desktop/backend/data/documents`).
+See **DEPLOY.md** for patch-without-rebuild, cache invalidation, data migration.
 
 ---
 
@@ -245,16 +250,18 @@ See **DEPLOY.md** for the full patch-without-rebuild recipe, writable-backend ca
 
 - **Ollama offline**: `ollama serve && ollama pull llama3 && ollama pull nomic-embed-text`
 - **OCR fails**: `brew install tesseract tesseract-lang poppler`
-- **Port in use**: `lsof -ti :8000 | xargs kill -9` (backend) / `:3456` (frontend)
-- **Electron shows 0 docs**: isolated userData — `cp -r backend/data/documents/* ~/Library/Application\ Support/llm-wiki-desktop/backend/data/documents/ && curl -X POST :8000/api/documents/scan`
-- **`No module named 'pypdf'` in scan-status**: fixed in `requirements.txt`; `~/.../backend/venv/bin/pip install pypdf`
-- **Stale frontend in .app**: `frontend/build` ≠ `frontend-build` — resync + repack `app.asar` (DEPLOY.md §5)
+- **Port in use**: `lsof -ti :8000 | xargs kill -9`
+- **Electron 0 docs**: `cp -r backend/data/documents/* ~/Library/Application\ Support/llm-wiki-desktop/backend/data/documents/ && curl -X POST :8000/api/documents/scan`
+- **`pypdf` missing**: fixed; `~/.../backend/venv/bin/pip install pypdf`
+- **Stale frontend in .app**: resync `frontend-build` + repack `app.asar`
+- **Chat hanging (stream)**: default now **off** — toggle `stream` in header to re-enable
+- **Chart 50s**: now **14s cold / 6s cached** via parallel 4 + cache; use **Grafici** tab for instant
 
 ---
 
 ## 🔒 Security
 
-- CORS allowlist, 50 MB upload cap, input validation, GZip (`minimum_size=1024`), WAL `journal_mode`, `Server-Timing` header.
+CORS allowlist, 50 MB cap, GZip, WAL, `Server-Timing`.
 
 ---
 
@@ -264,14 +271,13 @@ See **DEPLOY.md** for the full patch-without-rebuild recipe, writable-backend ca
 git checkout -b feat/my-feature
 git commit -m "feat: ..."
 git push origin feat/my-feature
-# PR against main
 ```
 
 ---
 
 ## 📄 License
 
-MIT — see `LICENSE`.
+MIT
 
 ## 🙏 Credits
 
