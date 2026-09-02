@@ -11,6 +11,42 @@
 - Multi-language UI (IT / EN / DE) with flag switcher top-right
 - Electron cache invalidation (multi-file), `pypdf` dep fix
 
+## ✅ Done (v1.2 — 2026-09-02) — Grafici Configurabili
+
+- `GET /api/analytics/presets` + `POST /api/analytics/extract|aggregate` — template fatture/spese/stipendi/custom, Excel/CSV diretto o LLM+regex fallback
+- Analytics UI (`Grafici` tab): multi-select documenti, preset, campo importo, raggruppa per (mese/categoria/fornitore), tipo grafico (Bar/Line/Pie/Table), SVG custom senza dipendenze
+- Chat fix: stale closure Dashboard Insights, Quick Actions navigation, TypeError + sum_field fallback per grafici vuoti
+
+---
+
+## 🚧 Next — Q2 2026: Grafici Intelligenti da Chat
+
+**Goal:** Chiedi in chat “fammi un grafico di tutti i miei guadagni” o “quanto ho speso per benzina? fammi un grafico” e ottieni risposta + grafico auto-generato, senza aprire il tab Grafici.
+
+| Feature | Description | Status |
+|---|---|---|
+| **Intent detection** | Backend chat rileva `grafico|chart|quanto ho speso|guadagn|benzina|spese` (IT/EN/DE) e triggera estrazione analytics sui documenti rilevanti al contesto. | Planned → **In Progress (backend done, frontend next)** |
+| **Auto-preset** | `guadagn|stipend|earnings` → `stipendi` (sum `importo_lordo`), `benzina|cibo|spesa` → `spese` (filter categoria), default `fatture`. `group_by` auto da query (`mese|month` → month). | Planned |
+| **Inline chart** | Risposta chat include `chart_data` renderizzato come Bar/Line/Pie sotto il testo (stesso SVG di Analytics). Streaming: chart inviato come evento finale `done`. | Planned |
+| **Configurazione utente** | In **Grafici** tab l’utente definisce template custom (campi + prompt) che la chat riusa. Es. “benzina” → categoria filtro. | Planned |
+| **Esempi** | `“Fammi un grafico di tutti i miei guadagni”` → stipendi per mese; `“Quanti soldi ho speso per benzina?”` → spese filtrate categoria=benzina per mese; `“Fammi un grafico delle spese per categoria”` → pie per categoria. | Planned |
+
+### Technical notes
+
+```
+Chat: "quanto ho speso per benzina? fammi un grafico"
+  → detect_chart_intent() → true, preset=spese, filter=categoria:benzina, group_by=month
+  → search_documents(query, 8) → filenames rilevanti
+  → analytics.aggregate(filenames, preset, sum_field, group_by) → chart_data
+  → ChatResponse {answer, sources, chart: {chart_data, total, group_by}}
+Frontend Chat: if chart → render BarChart/PieChart sotto bubble
+```
+
+```
+POST /api/chat/ {message: "fammi un grafico..." } → {answer, sources, chart: {...}}
+POST /api/chat/stream → SSE ... → data: {"done":true, "chart":{...}}
+```
+
 ---
 
 ## 🚧 Next — Q2 2026: Nextcloud / WebDAV Source

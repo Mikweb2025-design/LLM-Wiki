@@ -1,4 +1,5 @@
-"""API Router per Chat — include streaming SSE."""
+"""API Router per Chat — include streaming SSE + grafici intelligenti da chat."""
+import re
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from app.models.schemas import ChatRequest, ChatResponse
@@ -9,10 +10,136 @@ from app.config import IONOS_MODEL
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
+# ---------------------------------------------------------------------------
+# Grafici intelligenti — rilevamento intent in chat
+# ---------------------------------------------------------------------------
+_CHART_KEYWORDS = [
+    "grafico", "grafici", "diagramma", "diagrammi",
+    "chart", "charts", "graph",
+    "quanto ho speso", "quanti soldi", "spesa", "spese", "speso",
+    "how much", "spent", "expense",
+    "guadagn", "earnings", "income", "stipend",
+    "benzina", "carburante", "diesel", "fuel",
+    "fattura", "fatture", "invoice",
+]
+# per preset auto
+_SPESA_HINT = ["benzina", "carburante", "diesel", "fuel", "cibo", "food", "spesa", "spese", "affitto", "rent", "utenze", "bollette"]
+_GUADAGNO_HINT = ["guadagn", "stipend", "earnings", "income", "salary", "gehalt"]
+
+def _detect_chart_intent(msg: str) -> bool:
+    low = msg.lower()
+    return any(k in low for k in _CHART_KEYWORDS)
+
+def _infer_preset_and_group(msg: str) -> tuple:
+    low = msg.lower()
+    # preset
+    if any(k in low for k in _GUADAGNO_HINT):
+        preset = "stipendi"
+        sum_field = "importo_lordo"
+    elif any(k in low for k in _SPESA_HINT):
+        preset = "spese"
+        sum_field = "importo"
+    elif "fattura" in low or "invoice" in low:
+        preset = "fatture"
+        sum_field = "importo"
+    else:
+        preset = "spese" if "spes" in low else "fatture"
+        sum_field = "importo"
+        if any(k in low for k in _GUADAGNO_HINT):
+            sum_field = "importo_lordo"
+    # group_by
+    if "categoria" in low or "category" in low or "kategorie" in low:
+        group_by = "categoria"
+    elif "fornitore" in low or "vendor" in low or "lieferant" in low:
+        group_by = "fornitore"
+    elif "mese" in low or "month" in low or "monat" in low or "guadagni" in low or "speso" in low:
+        group_by = "month"
+    else:
+        group_by = "month"
+    return preset, sum_field, group_by
+
+async def _try_build_chart(query: str, context) -> dict | None:
+    """Prova a generare chart_data dai documenti di contesto. Ritorna dict chart o None."""
+    try:
+        # filenames dai context (chunk metadata) — deduplica
+        filenames = []
+        seen = set()
+        for doc in (context or []):
+            fn = doc.get("metadata", {}).get("filename")
+            if fn and fn not in seen:
+                seen.add(fn)
+                filenames.append(fn)
+
+        low = query.lower()
+        # Se query chiede "tutti i miei guadagni / tutte le spese" → prendi TUTTI i doc rilevanti per preset
+        is_all = any(k in low for k in ["tutti", "tutte", "tutto", "all", "alle"])
+        if is_all or len(filenames) < 3:
+            try:
+                from app.utils.database import get_all_documents
+                all_docs = get_all_documents() or []
+                preset_hint, _, _ = _infer_preset_and_group(query)
+                # filtra per preset quando serve
+                if preset_hint == "stipendi":
+                    keywords = ["remuneration", "entgelt", "pay", "salary", "stipend", "gehalt", "lohn", "verdien"]
+                    filtered = [d for d in all_docs if any(k in d["filename"].lower() for k in keywords)]
+                    if len(filtered) >= 2:
+                        filenames = [d["filename"] for d in filtered[:20]]
+                    else:
+                        filenames = [d["filename"] for d in all_docs[:20]]
+                elif "benzina" in low or "carburante" in low:
+                    # per benzina, cerca doc con benzina nel filename o prendi spese generiche
+                    kw = ["benzina", "carburante", "diesel", "fuel", "tank"]
+                    filtered = [d for d in all_docs if any(k in d["filename"].lower() for k in kw)]
+                    filenames = [d["filename"] for d in (filtered[:12] if filtered else all_docs[:12])]
+                else:
+                    # default: prendi tutti i doc se "tutti"
+                    if is_all:
+                        filenames = [d["filename"] for d in all_docs[:20]]
+                # deduplica mantenendo ordine
+                seen2 = set(); uniq = []
+                for f in filenames:
+                    if f not in seen2:
+                        seen2.add(f); uniq.append(f)
+                filenames = uniq
+            except: pass
+        if not filenames:
+            return None
+        preset, sum_field, group_by = _infer_preset_and_group(query)
+        # chiama aggregate direttamente
+        from app.routers.analytics import aggregate_data
+        payload = {"filenames": filenames[:16], "preset": preset, "group_by": group_by, "sum_field": sum_field}
+        result = await aggregate_data(payload)  # type: ignore
+        if not result or not result.get("chart_data"):
+            return None
+        # filtra chart con solo zeri o solo Senza data vuoto
+        chart = result["chart_data"]
+        total = result.get("total", 0)
+        # se tutto Senza data e zero, non mostrare
+        if len(chart) == 1 and chart[0]["label"] == "Senza data" and total == 0:
+            return None
+        # rimuovi voci Senza data con 0 se ci sono anche altre voci valide
+        if len(chart) > 1:
+            chart = [c for c in chart if not (c["label"] == "Senza data" and c["value"] == 0)]
+            total = sum(c["value"] for c in chart)
+        if not chart:
+            return None
+        return {
+            "chart_data": chart,
+            "total": round(total, 2),
+            "group_by": result["group_by"],
+            "preset": preset,
+            "sum_field": result.get("sum_field", sum_field),
+            "count": result.get("count", 0),
+        }
+    except Exception as e:
+        print(f"[WARN] chart intent build failed: {e}")
+        import traceback; traceback.print_exc()
+        return None
+
 
 @router.post("/", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """Invia messaggio chat e ricevi risposta dalla LLM (con history)."""
+    """Invia messaggio chat e ricevi risposta dalla LLM (con history) + grafico se richiesto."""
     # n_results 8 è buon compromesso qualità/latency; 20 era eccessivo (embedding + prompt enorme)
     context = search_documents(request.message, n_results=8)
     
@@ -47,12 +174,21 @@ async def chat(request: ChatRequest):
         for doc in context
     ]
 
-    return ChatResponse(answer=answer, sources=sources, model=f"{model} ({provider})")
+    # Grafico intelligente se intent rilevato
+    chart = None
+    if _detect_chart_intent(request.message):
+        chart = await _try_build_chart(request.message, context)
+        if chart:
+            # aggiungi nota nella risposta se non già presente
+            if "grafico" not in answer.lower() and "chart" not in answer.lower():
+                answer += f"\n\n📊 *Grafico generato automaticamente ({chart['preset']} per {chart['group_by']}, totale {chart['total']}€).*"
+
+    return ChatResponse(answer=answer, sources=sources, model=f"{model} ({provider})", chart=chart)
 
 
 @router.post("/stream")
 async def chat_stream(request: ChatRequest):
-    """Chat streaming via SSE — il frontend riceve token incrementali."""
+    """Chat streaming via SSE — il frontend riceve token incrementali + chart finale se richiesto."""
     import json
     context = search_documents(request.message, n_results=8)
     if not context:
@@ -62,6 +198,11 @@ async def chat_stream(request: ChatRequest):
 
     history = getattr(request, 'history', None) or []
     model = request.model or IONOS_MODEL
+
+    # pre-calcola chart se intent (non blocca lo streaming, fatto prima dello yield)
+    chart = None
+    if _detect_chart_intent(request.message):
+        chart = await _try_build_chart(request.message, context)
 
     def _gen():
         full = []
@@ -76,9 +217,12 @@ async def chat_stream(request: ChatRequest):
             save_chat_message(request.message, answer, f"{model} ({provider})")
         except Exception:
             pass
-        # invia sources finali
+        # invia sources + chart finali
         sources = [{"filename": d["metadata"].get("filename",""), "score": round(d["score"],3), "snippet": d["content"][:200]+"..."} for d in context]
-        yield f"data: {json.dumps({'done': True, 'sources': sources, 'model': f'{model} ({provider})'})}\n\n"
+        payload = {'done': True, 'sources': sources, 'model': f'{model} ({provider})'}
+        if chart:
+            payload['chart'] = chart
+        yield f"data: {json.dumps(payload)}\n\n"
 
     return StreamingResponse(_gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 

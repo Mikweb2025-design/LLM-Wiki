@@ -19,6 +19,7 @@ class ChatResponse(BaseModel):
     answer: str
     sources: List[dict]
     model: str
+    chart: Optional[dict] = None  # se intent grafico rilevato: {chart_data, total, group_by, preset, sum_field}
 
 
 class UploadResponse(BaseModel):

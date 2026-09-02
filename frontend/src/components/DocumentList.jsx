@@ -23,21 +23,42 @@ function DocumentList({ showToast }) {
   const [sortOrder, setSortOrder] = useState('asc');
   const [selectedFiles, setSelectedFiles] = useState(new Set());
   const [batchLoading, setBatchLoading] = useState(false);
+  const [tagsMap, setTagsMap] = useState({});
+  const [tagFilter, setTagFilter] = useState('all');
 
   useEffect(() => {
     fetchDocuments();
   }, []);
+
+  const fetchTagsMap = async () => {
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/documents/tags/map');
+      const data = await res.json();
+      setTagsMap(data.map || {});
+    } catch {}
+  };
 
   const fetchDocuments = async () => {
     setLoading(true);
     try {
       const response = await documentsApi.list();
       setDocuments(response.data);
+      fetchTagsMap();
     } catch (error) {
       console.error('Errore caricamento documenti:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleAutoTagAll = async () => {
+    try {
+      showToast?.('Tag automatico in corso...','info');
+      const res = await fetch('http://127.0.0.1:8000/api/documents/auto-tag/all', { method: 'POST' });
+      const data = await res.json();
+      showToast?.(`Taggati ${data.tagged} documenti, ${data.skipped} già ok`,'success');
+      fetchTagsMap();
+    } catch(e){ showToast?.('Errore auto-tag: '+e.message,'error'); }
   };
 
   const pollScanStatus = async (onDone) => {
@@ -272,6 +293,11 @@ function DocumentList({ showToast }) {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
+  const tagOptions = useMemo(()=>{
+    const all = new Set(Object.values(tagsMap).flat());
+    return Array.from(all).sort();
+  },[tagsMap]);
+
   const filteredAndSortedDocs = useMemo(() => {
     let filtered = documents;
     if (searchFilter) {
@@ -280,6 +306,9 @@ function DocumentList({ showToast }) {
         d.filename.toLowerCase().includes(q) ||
         d.extension?.toLowerCase().includes(q)
       );
+    }
+    if (tagFilter && tagFilter !== 'all') {
+      filtered = filtered.filter(d => (tagsMap[d.filename]||[]).includes(tagFilter));
     }
     const sorted = [...filtered].sort((a, b) => {
       let aVal, bVal;
@@ -300,7 +329,7 @@ function DocumentList({ showToast }) {
       }
     });
     return sorted;
-  }, [documents, searchFilter, sortBy, sortOrder]);
+  }, [documents, searchFilter, sortBy, sortOrder, tagsMap, tagFilter]);
 
   if (loading) {
     return (
@@ -439,6 +468,21 @@ function DocumentList({ showToast }) {
             </div>
           )}
           <button
+            onClick={handleAutoTagAll}
+            style={{
+              padding: '0.5rem 1rem',
+              background: 'rgba(168,85,247,0.08)',
+              color: 'var(--accent-purple)',
+              border: '1px solid rgba(168,85,247,0.2)',
+              borderRadius: '10px',
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+            }}
+            title="Tag automatici per tutti i documenti"
+          >
+            🏷️ Auto-Tag
+          </button>
+          <button
             onClick={fetchDocuments}
             style={{
               padding: '0.5rem 1rem',
@@ -458,7 +502,7 @@ function DocumentList({ showToast }) {
         </div>
       </div>
 
-      {/* Search and Sort */}
+      {/* Search and Sort + Tag filter */}
       <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
         <input
           type="text"
@@ -516,6 +560,22 @@ function DocumentList({ showToast }) {
         >
           {sortOrder === 'asc' ? '↑' : '↓'}
         </button>
+        <select
+          value={tagFilter}
+          onChange={(e)=>setTagFilter(e.target.value)}
+          style={{
+            background: 'var(--bg-glass)',
+            border: '1px solid var(--border-glass)',
+            borderRadius: '10px',
+            padding: '0.6rem 0.8rem',
+            color: 'var(--text-secondary)',
+            fontSize: '0.82rem',
+            cursor: 'pointer',
+          }}
+        >
+          <option value="all">Tutti i tag</option>
+          {tagOptions.map(t=> <option key={t} value={t}>{t} ({(tagsMap && Object.values(tagsMap).flat().filter(x=>x===t).length)})</option>)}
+        </select>
       </div>
 
       {/* Progress Bar for Reindex All */}
@@ -627,6 +687,13 @@ function DocumentList({ showToast }) {
                     <span>{formatSize(doc.size_bytes)}</span>
                     <span>{new Date(doc.modified).toLocaleDateString('it-IT')}</span>
                   </div>
+                  {(tagsMap[doc.filename]||[]).length>0 && (
+                    <div style={{ display:'flex', gap:'0.3rem', marginTop:'0.3rem', flexWrap:'wrap' }}>
+                      {(tagsMap[doc.filename]||[]).map(tag=>(
+                        <span key={tag} style={{ fontSize:'0.65rem', padding:'0.1rem 0.4rem', borderRadius:'6px', background: tag==='fattura'?'rgba(74,158,255,0.12)':tag==='stipendio'?'rgba(126,231,135,0.12)':tag==='contratto'?'rgba(168,85,247,0.12)':'rgba(255,255,255,0.06)', color: tag==='fattura'?'var(--accent-blue)':tag==='stipendio'?'var(--accent-green)':tag==='contratto'?'var(--accent-purple)':'var(--text-secondary)', border:'1px solid var(--border-glass)', fontFamily:'var(--font-mono)' }}>{tag}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>

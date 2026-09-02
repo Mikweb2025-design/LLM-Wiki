@@ -3,6 +3,39 @@ import { chatApi } from '../utils/api';
 import { useVoice } from '../hooks/useVoice';
 import ReactMarkdown from 'react-markdown';
 
+// Inline mini chart for chat — reuse Analytics SVG logic without extra dep
+function ChatMiniChart({ chart }) {
+  if (!chart || !chart.chart_data || chart.chart_data.length === 0) return null;
+  const data = chart.chart_data;
+  const max = Math.max(...data.map(d => d.value), 1);
+  const w = 420, h = 160, pad = 30;
+  const barGap = 6;
+  const barW = (w - pad*2 - barGap*(data.length-1)) / data.length;
+  const colors = ['#4a9eff','#a855f7','#ec4899','#7ee787'];
+  return (
+    <div style={{ marginTop: '0.75rem', padding: '0.6rem', background: 'rgba(15,15,25,0.6)', borderRadius: '10px', border: '1px solid var(--border-glass)' }}>
+      <div style={{ fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', marginBottom: '0.4rem', display:'flex', justifyContent:'space-between' }}>
+        <span>📊 {chart.preset} • {chart.group_by} • {chart.sum_field}</span>
+        <span style={{ color:'var(--accent-green)', fontWeight:600 }}>{chart.total?.toLocaleString('it-IT')}€ totale</span>
+      </div>
+      <svg viewBox={`0 0 ${w} ${h}`} style={{ width:'100%', height:'160px' }}>
+        {data.map((d,i)=>{
+          const bh = (d.value/max)*(h-pad*2);
+          const x = pad + i*(barW+barGap);
+          const y = h - pad - bh;
+          return (
+            <g key={i}>
+              <rect x={x} y={y} width={barW} height={bh} rx="4" fill={colors[i%colors.length]} opacity="0.85" />
+              <text x={x+barW/2} y={h-pad+11} textAnchor="middle" fontSize="7" fill="var(--text-secondary)">{d.label.length>8?d.label.slice(0,8)+'…':d.label}</text>
+              <text x={x+barW/2} y={y-4} textAnchor="middle" fontSize="7" fill="var(--text-primary)" fontWeight="600">{d.value.toLocaleString('it-IT')}€</text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
 const MessageBubble = memo(({ msg, onCopy, onSpeak }) => {
   const isUser = msg.role === 'user';
   return (
@@ -32,6 +65,8 @@ const MessageBubble = memo(({ msg, onCopy, onSpeak }) => {
         <div className="prose prose-sm max-w-none" style={{ fontSize: '0.9rem', lineHeight: 1.6 }}>
           <ReactMarkdown>{msg.content}</ReactMarkdown>
         </div>
+
+        {msg.chart && <ChatMiniChart chart={msg.chart} />}
 
         {msg.sources?.length > 0 && (
           <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-glass)' }}>
@@ -131,11 +166,11 @@ function Chat() {
 
     const history = messages.map((m) => ({ role: m.role, content: m.content }));
 
-    // Streaming path (SSE) — performance percepita molto migliore
+    // Streaming path (SSE) — performance percepita molto migliore + chart
     if (isStreaming) {
       let acc = '';
       // placeholder assistant msg per streaming
-      setMessages((prev) => [...prev, { role: 'assistant', content: '', sources: [], provider: '…', streaming: true }]);
+      setMessages((prev) => [...prev, { role: 'assistant', content: '', sources: [], chart: null, provider: '…', streaming: true }]);
       try {
         await chatApi.sendMessageStream(userInput, history, selectedModel || null,
           (token) => {
@@ -154,6 +189,7 @@ function Chat() {
               if (last && last.streaming) {
                 last.streaming = false;
                 last.sources = doneData?.sources || [];
+                last.chart = doneData?.chart || null;
                 last.model = doneData?.model || selectedModel || '';
                 const mi = last.model || '';
                 last.provider = mi.includes('(Ollama)') ? 'Ollama' : mi.includes('(IONOS)') ? 'IONOS' : 'AI';
@@ -181,14 +217,14 @@ function Chat() {
       return;
     }
 
-    // Fallback non-streaming
+    // Fallback non-streaming + chart
     try {
       const res = await chatApi.sendMessage(userInput, history, selectedModel || null);
       const modelInfo = res.data.model || selectedModel || '';
       const provider = modelInfo.includes('(Ollama)') ? 'Ollama' : modelInfo.includes('(IONOS)') ? 'IONOS' : 'AI';
       setMessages((prev) => [...prev, {
         role: 'assistant', content: res.data.answer,
-        sources: res.data.sources, provider, model: modelInfo,
+        sources: res.data.sources, chart: res.data.chart || null, provider, model: modelInfo,
       }]);
     } catch (error) {
       setMessages((prev) => [...prev, {
@@ -264,6 +300,7 @@ function Chat() {
               Ask about your documents
             </p>
             <p style={{ fontSize: '0.8rem', fontFamily: 'var(--font-sans)' }}>e.g. "What does the PDF contain?"</p>
+            <p style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--accent-purple)', marginTop:'0.6rem', opacity:0.8 }}>💡 Prova: "Fammi un grafico di tutti i miei guadagni" o "Quanto ho speso per benzina? fammi un grafico"</p>
           </div>
         )}
 

@@ -23,6 +23,7 @@ from app.utils.database import (
     is_document_indexed,
     log_activity,
 )
+from app.utils.auto_tagger import auto_tag_document
 
 router = APIRouter(prefix="/api/documents", tags=["documents"], redirect_slashes=False)
 
@@ -133,6 +134,13 @@ async def upload_document(file: UploadFile = File(...)):
     # Salva nel database
     add_document(file.filename, str(file_path), metadata["extension"], file_size)
     log_activity("upload", file.filename, f"{metadata['extension']} {file_size}B {len(chunks)} chunks")
+
+    # Auto-tagging (non blocca upload se fallisce)
+    try:
+        tags = auto_tag_document(file.filename, str(file_path))
+    except Exception as e:
+        print(f"[WARN] auto-tag upload {file.filename}: {e}")
+        tags = []
 
     return UploadResponse(
         filename=file.filename,
@@ -255,6 +263,9 @@ async def scan_directory():
                 doc_id = filename.replace(" ", "_").lower()
                 add_document_to_store(doc_id, content, metadata)
                 add_document(filename, file_path, metadata["extension"], metadata["size_bytes"])
+                try:
+                    auto_tag_document(filename, file_path)
+                except: pass
                 new_files += 1
             except Exception as e:
                 errors.append(f"{filename}: {str(e)}")
@@ -599,6 +610,9 @@ async def scan_custom_directory_endpoint(payload: dict):
                 doc_id = filename.replace(" ", "_").lower()
                 add_document_to_store(doc_id, content, metadata)
                 add_document(filename, file_path, metadata["extension"], metadata["size_bytes"])
+                try:
+                    auto_tag_document(filename, file_path)
+                except: pass
                 new_files += 1
             except Exception as e:
                 errors.append(f"{filename}: {str(e)}")
@@ -701,6 +715,9 @@ async def scan_folder_endpoint(folder_name: str):
                 doc_id = filename.replace(" ", "_").lower()
                 add_document_to_store(doc_id, content, metadata)
                 add_document(filename, file_path, metadata["extension"], metadata["size_bytes"])
+                try:
+                    auto_tag_document(filename, file_path)
+                except: pass
                 new_files += 1
             except Exception as e:
                 errors.append(f"{filename}: {str(e)}")
@@ -865,6 +882,21 @@ async def list_all_tags():
     return {"tags": get_all_tags()}
 
 
+@router.get("/tags/map")
+async def get_tags_map():
+    """Mappa filename → [tag] per tutti i documenti (per UI lista)."""
+    from app.utils.database import get_all_documents, get_document_tags
+    docs = get_all_documents() or []
+    result = {}
+    for d in docs:
+        fname = d["filename"]
+        try:
+            result[fname] = get_document_tags(fname)
+        except:
+            result[fname] = []
+    return {"map": result}
+
+
 @router.get("/tags/{tag}")
 async def get_docs_by_tag(tag: str):
     """Documenti con un tag specifico."""
@@ -923,3 +955,49 @@ async def get_related_documents(filename: str, n_results: int = 5):
     """Alias per similar — endpoint più intuitivo per frontend."""
     # riusa logica similar
     return await find_similar_documents(filename, n_results=n_results)
+
+
+@router.post("/auto-tag/all")
+async def auto_tag_all_documents(force: bool = False):
+    """Tagga automaticamente tutti i documenti esistenti (usato al primo deploy e su richiesta).
+    force=true → ritaglia anche se già taggati (sovrascrive). force=false → salta già taggati bene.
+    """
+    from app.utils.database import get_all_documents, get_document_tags
+    from app.utils.auto_tagger import auto_tag_document
+    docs = get_all_documents() or []
+    tagged = 0
+    skipped = 0
+    errors = []
+    for doc in docs:
+        fname = doc["filename"]
+        fpath = doc.get("file_path")
+        # se non force e già ha tag buoni, skip
+        if not force:
+            try:
+                existing = get_document_tags(fname)
+                if existing and "altro" not in existing:
+                    skipped += 1
+                    continue
+            except: pass
+        try:
+            tags = auto_tag_document(fname, fpath)
+            if tags:
+                tagged += 1
+            else:
+                skipped += 1
+        except Exception as e:
+            errors.append(f"{fname}: {e}")
+    return {"total": len(docs), "tagged": tagged, "skipped": skipped, "errors": errors[:10]}
+
+
+@router.post("/auto-tag/{filename}")
+async def auto_tag_single(filename: str):
+    """Tagga un singolo documento."""
+    from app.utils.database import get_document
+    from app.utils.auto_tagger import auto_tag_document
+    doc = get_document(filename)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento non trovato")
+    tags = auto_tag_document(filename, doc.get("file_path"))
+    from app.utils.database import get_document_tags
+    return {"filename": filename, "tags": get_document_tags(filename)}
