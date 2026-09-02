@@ -11,6 +11,7 @@ import KeyboardShortcuts from './components/KeyboardShortcuts';
 import CompareDocuments from './components/CompareDocuments';
 import Folders from './components/Folders';
 import Roadmap from './components/Roadmap';
+import Analytics from './components/Analytics';
 import NotificationCenter, { useNotifications } from './components/NotificationCenter';
 import DiagnosticPanel from './components/DiagnosticPanel';
 import { I18nContext, getInitialLang, t } from './utils/i18n';
@@ -71,6 +72,7 @@ function App() {
     { id: 'folders', key: 'tabs.folders' },
     { id: 'documents', key: 'tabs.documents' },
     { id: 'compare', key: 'tabs.compare' },
+    { id: 'analytics', key: 'tabs.analytics' },
     { id: 'export', key: 'tabs.export' },
     { id: 'status', key: 'tabs.status' },
     { id: 'settings', key: 'tabs.settings' },
@@ -87,6 +89,7 @@ function App() {
       folders: Folders,
       documents: DocumentList,
       compare: CompareDocuments,
+      analytics: Analytics,
       export: ExportChat,
       status: SystemStatus,
       settings: Settings,
