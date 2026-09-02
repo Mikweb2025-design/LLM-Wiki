@@ -13,22 +13,33 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 # ---------------------------------------------------------------------------
 # Grafici intelligenti — rilevamento intent in chat
 # ---------------------------------------------------------------------------
+# Solo intent esplicito di grafico — parole generiche come "fattura" da sole NON triggerano.
 _CHART_KEYWORDS = [
     "grafico", "grafici", "diagramma", "diagrammi",
-    "chart", "charts", "graph",
-    "quanto ho speso", "quanti soldi", "spesa", "spese", "speso",
-    "how much", "spent", "expense",
-    "guadagn", "earnings", "income", "stipend",
-    "benzina", "carburante", "diesel", "fuel",
-    "fattura", "fatture", "invoice",
+    "chart", "charts", "graph", "diagram",
+    "fammi un grafico", "fai un grafico", "crea un grafico", "genera un grafico",
+    "make a chart", "create a chart", "show me a chart",
+    "quanto ho speso", "quanti soldi ho speso", "how much did i spend",
+    "spese per",  # "spese per categoria" è intent grafico se con "grafico" o "quanto"
 ]
+# per essere considerato chart, deve contenere almeno una di queste + (grafico|speso|guadagn) ?
+_CHART_EXPLICIT = ["grafico", "grafici", "diagramma", "chart", "graph", "diagram"]
 # per preset auto
 _SPESA_HINT = ["benzina", "carburante", "diesel", "fuel", "cibo", "food", "spesa", "spese", "affitto", "rent", "utenze", "bollette"]
 _GUADAGNO_HINT = ["guadagn", "stipend", "earnings", "income", "salary", "gehalt"]
 
 def _detect_chart_intent(msg: str) -> bool:
     low = msg.lower()
-    return any(k in low for k in _CHART_KEYWORDS)
+    # Deve contenere una parola esplicita di grafico, oppure una frase completa "quanto ho speso" + richiesta visiva
+    has_explicit = any(k in low for k in _CHART_EXPLICIT)
+    if has_explicit:
+        return True
+    # Frasi tipo "quanto ho speso per benzina? fammi un grafico" → già coperta da has_explicit (grafico)
+    # Ma anche "quanto ho speso per benzina?" da sola NON deve fare grafico — solo se chiede grafico
+    # Quindi richiediamo sempre grafico/chart/diagramma, tranne i casi "fammi un grafico..." già inclusi
+    # Per compatibilità, lasciamo anche "fammi un grafico di tutti i miei guadagni" → ha_explicit true
+    # Se proprio vuole solo "quanti soldi ho speso per benzina" senza grafico, non triggerare
+    return False
 
 def _infer_preset_and_group(msg: str) -> tuple:
     low = msg.lower()
@@ -105,9 +116,9 @@ async def _try_build_chart(query: str, context) -> dict | None:
         if not filenames:
             return None
         preset, sum_field, group_by = _infer_preset_and_group(query)
-        # chiama aggregate direttamente
+        # chiama aggregate — per chat usiamo LLM ma con cache (prima chiamata ~15s, poi <1s)
         from app.routers.analytics import aggregate_data
-        payload = {"filenames": filenames[:16], "preset": preset, "group_by": group_by, "sum_field": sum_field}
+        payload = {"filenames": filenames[:12], "preset": preset, "group_by": group_by, "sum_field": sum_field}
         result = await aggregate_data(payload)  # type: ignore
         if not result or not result.get("chart_data"):
             return None

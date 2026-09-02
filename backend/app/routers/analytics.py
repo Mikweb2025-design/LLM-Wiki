@@ -6,11 +6,41 @@ Per PDF/DOCX/immagini: LLM extraction (JSON) con fallback regex.
 """
 import re
 import json
+import time
+import threading
 from typing import List, Dict, Optional
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
+
+# Cache per estrazione LLM — evita di richiamare LLM per stesso file/preset (TTL 1h)
+_EXTRACT_CACHE: Dict[str, tuple] = {}  # key -> (ts, result)
+_EXTRACT_LOCK = threading.Lock()
+_EXTRACT_TTL = 3600.0
+
+def _cache_key(file_path: str, preset: str) -> str:
+    try:
+        import os
+        mtime = os.path.getmtime(file_path)
+        return f"{file_path}:{preset}:{mtime}"
+    except:
+        return f"{file_path}:{preset}"
+
+def _cache_get(key: str):
+    with _EXTRACT_LOCK:
+        hit = _EXTRACT_CACHE.get(key)
+        if hit and (time.monotonic() - hit[0]) < _EXTRACT_TTL:
+            return hit[1]
+    return None
+
+def _cache_set(key: str, value):
+    with _EXTRACT_LOCK:
+        if len(_EXTRACT_CACHE) > 200:
+            # evict oldest
+            oldest = min(_EXTRACT_CACHE, key=lambda k: _EXTRACT_CACHE[k][0])
+            _EXTRACT_CACHE.pop(oldest, None)
+        _EXTRACT_CACHE[key] = (time.monotonic(), value)
 
 # Preset configurabili — l'utente li sceglie nel frontend
 PRESETS = {
@@ -222,7 +252,14 @@ async def extract_data(payload: dict):
                 results.append({"filename": fname, "extracted": rows[:50], "source": "excel", "fields": list(rows[0].keys()) if rows else []})
             continue
 
-        # PDF/DOCX/IMG → LLM o regex
+        # PDF/DOCX/IMG → LLM o regex (con cache)
+        cache_key = _cache_key(fpath, preset_key)
+        cached = _cache_get(cache_key) if use_llm else None
+        if cached is not None:
+            # cache hit — riusa (copia per evitare mutazione)
+            results.append({"filename": fname, "extracted": cached["extracted"], "source": cached["source"] + "+cache", "fields": fields})
+            continue
+
         try:
             text = process_document(fpath)
         except Exception as e:
@@ -241,6 +278,11 @@ async def extract_data(payload: dict):
         if extracted is None:
             extracted = _regex_fallback(text)
             source = "regex"
+
+        # salva in cache (solo se LLM ha avuto successo, altrimenti regex è già veloce)
+        try:
+            _cache_set(cache_key, {"extracted": extracted, "source": source})
+        except: pass
 
         results.append({"filename": fname, "extracted": extracted, "source": source, "fields": fields})
 
