@@ -81,10 +81,10 @@ const MessageBubble = memo(({ msg, onCopy, onSpeak }) => {
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
               {msg.sources.map((s, i) => (
-                <span key={i} style={{
+                <span key={i} title={s.highlight || s.snippet || ''} style={{
                   fontSize: '0.7rem', background: 'rgba(74,158,255,0.1)', color: 'var(--accent-blue)',
                   padding: '0.15rem 0.5rem', borderRadius: '4px', fontFamily: 'var(--font-mono)',
-                }}>{s.filename}</span>
+                }}>{s.filename}{s.page ? ` p.${s.page}` : ''}</span>
               ))}
             </div>
           </div>
@@ -174,13 +174,13 @@ function Chat() {
 
     const history = messages.map((m) => ({ role: m.role, content: m.content }));
 
-    // Streaming path (SSE) — performance percepita molto migliore + chart
+    // Streaming path (SSE) — lang-aware
     if (isStreaming) {
       let acc = '';
       // placeholder assistant msg per streaming
       setMessages((prev) => [...prev, { role: 'assistant', content: '', sources: [], chart: null, provider: '…', streaming: true }]);
       try {
-        await chatApi.sendMessageStream(userInput, history, selectedModel || null,
+        await chatApi.sendMessageStream(userInput, history, selectedModel || null, lang,
           (token) => {
             acc += token;
             setMessages((prev) => {
@@ -225,9 +225,9 @@ function Chat() {
       return;
     }
 
-    // Fallback non-streaming + chart
+    // Fallback non-streaming + chart — lang-aware
     try {
-      const res = await chatApi.sendMessage(userInput, history, selectedModel || null);
+      const res = await chatApi.sendMessage(userInput, history, selectedModel || null, lang);
       const modelInfo = res.data.model || selectedModel || '';
       const provider = modelInfo.includes('(Ollama)') ? 'Ollama' : modelInfo.includes('(IONOS)') ? 'IONOS' : 'AI';
       setMessages((prev) => [...prev, {
@@ -241,7 +241,7 @@ function Chat() {
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, messages, selectedModel, isStreaming, tr]);
+  }, [input, isLoading, messages, selectedModel, isStreaming, tr, lang]);
 
   const clearChat = useCallback(() => setMessages([]), []);
   const copyMessage = useCallback((content) => { navigator.clipboard.writeText(content); }, []);

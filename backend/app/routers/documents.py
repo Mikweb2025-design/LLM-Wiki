@@ -422,31 +422,59 @@ async def get_document_summary(filename: str, max_length: int = 500):
         raise HTTPException(status_code=500, detail=f"Errore generazione riassunto: {str(e)}")
 
 
-_INSIGHTS_CACHE = {"ts": 0.0, "payload": None}
+_INSIGHTS_CACHE = {"by_lang": {}}  # lang -> {ts, payload}
 _INSIGHTS_TTL = 600.0  # 10 min — l'LLM call era 13s, troppo per ogni dashboard load
 
 
 @router.get("/insights")
-async def get_documents_insights(refresh: bool = False):
-    """Genera insights AI sui documenti (cached 10min). `?refresh=1` per forzare."""
+async def get_documents_insights(refresh: bool = False, lang: str = "it"):
+    """Genera insights AI sui documenti (cached 10min per lingua). `?refresh=1&lang=en` per forzare."""
     import time as _t
     from app.utils.llm_handler import chat_with_llm, check_ollama_connection, USE_IONOS
 
+    lang = (lang or "it").lower()[:2]
+    if lang not in ("it","en","de"): lang="it"
     now = _t.monotonic()
-    if not refresh and _INSIGHTS_CACHE["payload"] and (now - _INSIGHTS_CACHE["ts"]) < _INSIGHTS_TTL:
-        return _INSIGHTS_CACHE["payload"]
+    cached = _INSIGHTS_CACHE["by_lang"].get(lang)
+    if not refresh and cached and (now - cached["ts"]) < _INSIGHTS_TTL:
+        return cached["payload"]
+
+    def _set_cache(payload):
+        _INSIGHTS_CACHE["by_lang"][lang] = {"ts": now if payload.get("cached") is False else now, "payload": payload}
+        # also update ts for that lang (already done)
+    # localized messages
+    msgs = {
+        "it": {
+            "no_provider": "Nessun provider LLM disponibile (IONOS e Ollama offline).",
+            "no_docs": "Nessun documento indicizzato. Carica dei documenti per generare insights.",
+            "no_extract": "Impossibile estrarre testo dai documenti selezionati.",
+            "prompt": "Analizza i seguenti estratti di documenti dalla knowledge base wiki. Fornisci: 1) Temi principali 2) Documenti più rilevanti 3) Suggerimenti per esplorare la knowledge base. Rispondi in italiano e sii conciso (max 300 parole).",
+        },
+        "en": {
+            "no_provider": "No LLM provider available (IONOS and Ollama offline).",
+            "no_docs": "No documents indexed. Upload documents to generate insights.",
+            "no_extract": "Could not extract text from selected documents.",
+            "prompt": "Analyze the following excerpts from the wiki knowledge base. Provide: 1) Main themes 2) Most relevant documents 3) Suggestions to explore the knowledge base. Answer in English and be concise (max 300 words).",
+        },
+        "de": {
+            "no_provider": "Kein LLM-Anbieter verfügbar (IONOS und Ollama offline).",
+            "no_docs": "Keine Dokumente indiziert. Lade Dokumente hoch, um Insights zu generieren.",
+            "no_extract": "Text aus ausgewählten Dokumenten konnte nicht extrahiert werden.",
+            "prompt": "Analysiere die folgenden Auszüge aus der Wiki-Wissensdatenbank. Liefere: 1) Hauptthemen 2) Relevanteste Dokumente 3) Vorschläge zur Erkundung der Wissensdatenbank. Antworte auf Deutsch und sei prägnant (max 300 Wörter).",
+        },
+    }[lang]
 
     # Check if at least one LLM is available
     if not USE_IONOS and not check_ollama_connection():
-        payload = {"insights": "Nessun provider LLM disponibile (IONOS e Ollama offline).", "documents_analyzed": 0, "cached": False}
-        _INSIGHTS_CACHE.update(ts=now, payload=payload)
+        payload = {"insights": msgs["no_provider"], "documents_analyzed": 0, "cached": False, "lang": lang}
+        _set_cache(payload)
         return payload
 
     try:
         docs = get_all_documents() or []
         if not docs:
-            payload = {"insights": "Nessun documento indicizzato. Carica dei documenti per generare insights.", "documents_analyzed": 0, "cached": False}
-            _INSIGHTS_CACHE.update(ts=now, payload=payload)
+            payload = {"insights": msgs["no_docs"], "documents_analyzed": 0, "cached": False, "lang": lang}
+            _set_cache(payload)
             return payload
 
         # Sample up to 5 random documents for insights
@@ -465,27 +493,29 @@ async def get_documents_insights(refresh: bool = False):
                 continue
 
         if not combined_parts:
-            payload = {"insights": "Impossibile estrarre testo dai documenti selezionati.", "documents_analyzed": 0, "cached": False}
-            _INSIGHTS_CACHE.update(ts=now, payload=payload)
+            payload = {"insights": msgs["no_extract"], "documents_analyzed": 0, "cached": False, "lang": lang}
+            _set_cache(payload)
             return payload
 
         combined = "\n\n---\n\n".join(combined_parts)
         insights = chat_with_llm(
-            "Analizza i seguenti estratti di documenti dalla knowledge base wiki. Fornisci: 1) Temi principali 2) Documenti piu' rilevanti 3) Suggerimenti per esplorare la knowledge base. Rispondi in italiano e sii conciso (max 300 parole).",
-            [{"content": combined, "metadata": {"source": "multi-doc"}}]
+            msgs["prompt"],
+            [{"content": combined, "metadata": {"source": "multi-doc"}}],
+            lang=lang
         )
 
         # Check if LLM returned an error
         if isinstance(insights, str) and insights.startswith("Errore"):
-            payload = {"insights": insights, "documents_analyzed": 0, "cached": False}
+            payload = {"insights": insights, "documents_analyzed": 0, "cached": False, "lang": lang}
         else:
             payload = {
                 "insights": insights,
                 "documents_analyzed": len(combined_parts),
                 "cached": False,
                 "generated_at": _t.time(),
+                "lang": lang,
             }
-        _INSIGHTS_CACHE.update(ts=now, payload=payload)
+        _set_cache(payload)
         return payload
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Errore generazione insights: {str(e)}")

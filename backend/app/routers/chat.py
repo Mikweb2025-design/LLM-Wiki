@@ -152,12 +152,20 @@ async def _try_build_chart(query: str, context) -> dict | None:
 @router.post("/", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """Invia messaggio chat e ricevi risposta dalla LLM (con history) + grafico se richiesto."""
+    # lingua richiesta (it/en/de) — default it per retrocompat
+    lang = (getattr(request, 'lang', None) or "it").lower()[:2]
+    if lang not in ("it","en","de"): lang="it"
     # n_results 8 è buon compromesso qualità/latency; 20 era eccessivo (embedding + prompt enorme)
     context = search_documents(request.message, n_results=8)
     
     if not context:
+        msg_no_docs = {
+            "it": "Non ho trovato documenti indicizzati. Carica prima dei documenti nella Wiki.",
+            "en": "No indexed documents found. Please upload documents to the Wiki first.",
+            "de": "Keine indizierten Dokumente gefunden. Bitte lade zuerst Dokumente in das Wiki hoch.",
+        }.get(lang, "Non ho trovato documenti indicizzati. Carica prima dei documenti nella Wiki.")
         return ChatResponse(
-            answer="Non ho trovato documenti indicizzati. Carica prima dei documenti nella Wiki.",
+            answer=msg_no_docs,
             sources=[],
             model=IONOS_MODEL,
         )
@@ -165,7 +173,7 @@ async def chat(request: ChatRequest):
     model = request.model or IONOS_MODEL
     # estrai history se presente nella request (campo opzionale)
     history = getattr(request, 'history', None) or []
-    result = chat_with_llm(request.message, context, model, history=history)
+    result = chat_with_llm(request.message, context, model, history=history, lang=lang)
 
     if isinstance(result, dict):
         answer = result.get("answer", str(result))
@@ -206,10 +214,17 @@ async def chat(request: ChatRequest):
 async def chat_stream(request: ChatRequest):
     """Chat streaming via SSE — il frontend riceve token incrementali + chart finale se richiesto."""
     import json
+    lang = (getattr(request, 'lang', None) or "it").lower()[:2]
+    if lang not in ("it","en","de"): lang="it"
     context = search_documents(request.message, n_results=8)
     if not context:
+        msg_no_docs = {
+            "it": "Non ho trovato documenti indicizzati. Carica prima dei documenti.",
+            "en": "No indexed documents found. Please upload documents first.",
+            "de": "Keine indizierten Dokumente gefunden. Bitte lade zuerst Dokumente hoch.",
+        }.get(lang, "Non ho trovato documenti indicizzati. Carica prima dei documenti.")
         async def _empty():
-            yield f"data: {json.dumps({'token': 'Non ho trovato documenti indicizzati. Carica prima dei documenti.', 'done': True})}\n\n"
+            yield f"data: {json.dumps({'token': msg_no_docs, 'done': True})}\n\n"
         return StreamingResponse(_empty(), media_type="text/event-stream")
 
     history = getattr(request, 'history', None) or []
@@ -222,7 +237,7 @@ async def chat_stream(request: ChatRequest):
 
     def _gen():
         full = []
-        for token in chat_with_llm_stream(request.message, context, model, history=history):
+        for token in chat_with_llm_stream(request.message, context, model, history=history, lang=lang):
             full.append(token)
             yield f"data: {json.dumps({'token': token})}\n\n"
         # salva a fine stream

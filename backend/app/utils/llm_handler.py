@@ -38,21 +38,48 @@ def _build_context_text(context: List[Dict], max_total_chars: int = 12000, per_d
     return "\n\n".join(parts) if parts else "Nessun documento trovato nel contesto."
 
 
-def chat_with_llm(query: str, context: List[Dict], model: str = None, history: List[Dict] = None) -> str:
-    """Chatta con LLM usando IONOS (primario) e Ollama (fallback).
-
-    history: lista di {role, content} per memoria conversazionale (ultimi 6 msg).
-    """
-    context_text = _build_context_text(context)
-
-    system_prompt = (
+def _system_prompt_for_lang(lang: str, with_citations: bool = True) -> str:
+    l = (lang or "it").lower()[:2]
+    citation = ""
+    if with_citations:
+        citation = {
+            "it": "Cita sempre il nome del documento con pagina quando presente, formato `filename p.N` tra parentesi (es. `contratto.pdf p.3`). Se il contesto indica p. N usalo; altrimenti cita solo il filename.",
+            "en": "Always cite the document name with page when present, format `filename p.N` in parentheses (e.g. `contract.pdf p.3`). If context shows p. N use it; otherwise cite only filename.",
+            "de": "Zitiere immer den Dokumentnamen mit Seite wenn vorhanden, Format `filename S.N` in Klammern (z. B. `vertrag.pdf S.3`). Wenn Kontext S. N zeigt, nutze es; sonst nur Dateiname.",
+        }.get(l, "")
+    if l == "en":
+        return (
+            "You are an assistant for a Wiki knowledge base. "
+            "Answer in English, based ONLY on the documents in Context. "
+            "If info is not in documents, say so explicitly and suggest what to search. "
+            + (citation + " " if citation else "") +
+            "Concise but complete answer, use markdown when helpful."
+        )
+    if l == "de":
+        return (
+            "Du bist ein Assistent für eine Wiki-Wissensdatenbank. "
+            "Antworte auf Deutsch, basierend NUR auf den Dokumenten im Kontext. "
+            "Wenn Info nicht in Dokumenten ist, sage es explizit und schlage vor, wonach zu suchen ist. "
+            + (citation + " " if citation else "") +
+            "Prägnante aber vollständige Antwort, nutze Markdown wenn hilfreich."
+        )
+    return (
         "Sei un assistente per una knowledge base Wiki. "
         "Rispondi in italiano, basandoti SOLO sui documenti forniti nel Contesto. "
         "Se l'informazione non è nei documenti, dillo esplicitamente e suggerisci cosa cercare. "
-        "Cita sempre il nome del documento con pagina quando presente, formato `filename p.N` tra parentesi (es. `contratto.pdf p.3`). "
-        "Se il contesto indica p. N usalo; altrimenti cita solo il filename. "
+        + (citation + " " if citation else "") +
         "Risposta concisa ma completa, usa markdown quando utile."
     )
+
+def chat_with_llm(query: str, context: List[Dict], model: str = None, history: List[Dict] = None, lang: str = "it") -> str:
+    """Chatta con LLM usando IONOS (primario) e Ollama (fallback).
+
+    history: lista di {role, content} per memoria conversazionale (ultimi 6 msg).
+    lang: 'it' | 'en' | 'de' — lingua risposta.
+    """
+    context_text = _build_context_text(context)
+
+    system_prompt = _system_prompt_for_lang(lang, with_citations=True)
 
     messages = [{"role": "system", "content": system_prompt}]
 
@@ -105,17 +132,14 @@ def chat_with_llm(query: str, context: List[Dict], model: str = None, history: L
         return f"Errore: IONOS e Ollama non disponibili. {str(e)}"
 
 
-def chat_with_llm_stream(query: str, context: List[Dict], model: str = None, history: List[Dict] = None):
+def chat_with_llm_stream(query: str, context: List[Dict], model: str = None, history: List[Dict] = None, lang: str = "it"):
     """Generator streaming per SSE: yield chunk di testo.
 
     Usa IONOS con stream=True se disponibile, altrimenti fallback non-streaming a blocchi.
+    lang: 'it' | 'en' | 'de'
     """
     context_text = _build_context_text(context)
-    system_prompt = (
-        "Sei un assistente per una knowledge base Wiki. "
-        "Rispondi in italiano, basandoti SOLO sui documenti forniti. "
-        "Cita i documenti tra parentesi. Usa markdown."
-    )
+    system_prompt = _system_prompt_for_lang(lang, with_citations=True)
     messages = [{"role": "system", "content": system_prompt}]
     if history:
         for h in history[-6:]:
@@ -152,7 +176,7 @@ def chat_with_llm_stream(query: str, context: List[Dict], model: str = None, his
             print(f"[WARN] IONOS stream fallito: {e}")
 
     # Fallback: chiamata non-streaming spezzata a chunk
-    text = chat_with_llm(query, context, model=model, history=history)
+    text = chat_with_llm(query, context, model=model, history=history, lang=lang)
     # yield a parole per simulare streaming
     for word in text.split(" "):
         yield word + " "

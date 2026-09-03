@@ -62,11 +62,12 @@ function Dashboard({ onNavigate }) {
     }
   };
 
-  const loadInsights = useCallback(async () => {
+  const loadInsights = useCallback(async (forceLang) => {
+    const effLang = (typeof forceLang === 'string' && ['it','en','de'].includes(forceLang)) ? forceLang : lang;
     setInsightsLoading(true);
     setInsightsError('');
     try {
-      const res = await documentsApi.insights();
+      const res = await documentsApi.insights(false, effLang);
       setInsights(res.data.insights || '');
     } catch (e) {
       console.error('Insights error:', e);
@@ -74,7 +75,14 @@ function Dashboard({ onNavigate }) {
     } finally {
       setInsightsLoading(false);
     }
-  }, [tr]);
+  }, [tr, lang]);
+
+  // Re-fetch insights when language changes (user switched flag)
+  useEffect(() => {
+    if (stats?.total_documents > 0) {
+      loadInsights(lang);
+    }
+  }, [lang]);
 
   const totalSize = useMemo(() =>
     stats?.total_size_bytes != null

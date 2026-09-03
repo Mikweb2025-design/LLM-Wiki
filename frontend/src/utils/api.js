@@ -8,14 +8,20 @@ const api = axios.create({
 });
 
 export const chatApi = {
-  sendMessage: (message, history = [], model = null) =>
-    api.post('/api/chat/', { message, history, model }),
-  // streaming via fetch + SSE
-  sendMessageStream: async (message, history = [], model = null, onToken, onDone) => {
+  sendMessage: (message, history = [], model = null, lang = 'it') =>
+    api.post('/api/chat/', { message, history, model, lang }),
+  // streaming via fetch + SSE — lang is forwarded to backend for AI language
+  // supports both old call (message,history,model,onToken,onDone) and new (message,history,model,lang,onToken,onDone)
+  sendMessageStream: async (message, history = [], model = null, langOrToken, onTokenOrDone, onDoneMaybe) => {
+    let lang = 'it', onToken, onDone;
+    if (typeof langOrToken === 'function') { lang='it'; onToken=langOrToken; onDone=onTokenOrDone; }
+    else if (typeof onTokenOrDone === 'function' && typeof onDoneMaybe === 'function') { lang=langOrToken||'it'; onToken=onTokenOrDone; onDone=onDoneMaybe; }
+    else if (typeof langOrToken === 'string') { lang=langOrToken||'it'; onToken=onTokenOrDone; onDone=onDoneMaybe; }
+    else { lang='it'; onToken=langOrToken; onDone=onTokenOrDone; }
     const res = await fetch(`${API_URL}/api/chat/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, history, model }),
+      body: JSON.stringify({ message, history, model, lang }),
     });
     if (!res.ok) throw new Error(`Stream failed ${res.status}`);
     const reader = res.body.getReader();
@@ -63,7 +69,13 @@ export const documentsApi = {
   preview: (filename) => api.get(`/api/documents/content/${encodeURIComponent(filename)}`),
   content: (filename) => api.get(`/api/documents/content/${encodeURIComponent(filename)}`),
   search: (query) => api.get('/api/documents/search', { params: { q: query } }),
-  insights: (refresh = false) => api.get(`/api/documents/insights${refresh ? '?refresh=1' : ''}`),
+  insights: (refresh = false, lang = 'it') => {
+    const p = new URLSearchParams();
+    if (refresh) p.set('refresh','1');
+    if (lang) p.set('lang', lang);
+    const qs = p.toString();
+    return api.get(`/api/documents/insights${qs ? '?'+qs : ''}`);
+  },
   summary: (filename) => api.get(`/api/documents/summary/${encodeURIComponent(filename)}`),
   stats: () => api.get('/api/documents/stats'),
   similar: (filename) => api.get(`/api/documents/similar/${encodeURIComponent(filename)}`),

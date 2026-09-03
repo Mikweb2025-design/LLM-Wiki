@@ -13,6 +13,7 @@ class ChatRequest(BaseModel):
     message: str
     history: Optional[List[ChatMessage]] = []
     model: Optional[str] = None
+    lang: Optional[str] = None  # 'it' | 'en' | 'de' — lingua risposta AI, default 'it'
 
 
 class ChatResponse(BaseModel):
