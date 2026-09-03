@@ -17,16 +17,18 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 _CHART_KEYWORDS = [
     "grafico", "grafici", "diagramma", "diagrammi",
     "chart", "charts", "graph", "diagram",
+    "diagramm", "diagramme", "grafik", "grafiken",  # DE
     "fammi un grafico", "fai un grafico", "crea un grafico", "genera un grafico",
     "make a chart", "create a chart", "show me a chart",
-    "quanto ho speso", "quanti soldi ho speso", "how much did i spend",
+    "erstelle ein diagramm", "zeige mir ein diagramm", "mach ein diagramm", "erstelle eine grafik",  # DE
+    "quanto ho speso", "quanti soldi ho speso", "how much did i spend", "wie viel habe ich ausgegeben",
     "spese per",  # "spese per categoria" è intent grafico se con "grafico" o "quanto"
 ]
-# per essere considerato chart, deve contenere almeno una di queste + (grafico|speso|guadagn) ?
-_CHART_EXPLICIT = ["grafico", "grafici", "diagramma", "chart", "graph", "diagram"]
-# per preset auto
-_SPESA_HINT = ["benzina", "carburante", "diesel", "fuel", "cibo", "food", "spesa", "spese", "affitto", "rent", "utenze", "bollette"]
-_GUADAGNO_HINT = ["guadagn", "stipend", "earnings", "income", "salary", "gehalt"]
+# per essere considerato chart, deve contenere almeno una di queste
+_CHART_EXPLICIT = ["grafico", "grafici", "diagramma", "diagrammi", "chart", "charts", "graph", "diagram", "diagramm", "diagramme", "grafik", "grafiken"]
+# per preset auto — IT/EN/DE
+_SPESA_HINT = ["benzina", "carburante", "diesel", "fuel", "kraftstoff", "benzin", "cibo", "food", "lebensmittel", "spesa", "spese", "ausgaben", "affitto", "rent", "miete", "utenze", "bollette", "nebenkosten"]
+_GUADAGNO_HINT = ["guadagn", "stipend", "earnings", "income", "salary", "gehalt", "lohn", "verdienst", "einkommen"]
 
 def _detect_chart_intent(msg: str) -> bool:
     low = msg.lower()

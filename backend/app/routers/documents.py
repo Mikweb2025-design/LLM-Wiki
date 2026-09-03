@@ -429,7 +429,7 @@ _INSIGHTS_TTL = 600.0  # 10 min — l'LLM call era 13s, troppo per ogni dashboar
 @router.get("/insights")
 async def get_documents_insights(refresh: bool = False, lang: str = "it"):
     """Genera insights AI sui documenti (cached 10min per lingua). `?refresh=1&lang=en` per forzare."""
-    import time as _t
+    import time as _t, asyncio
     from app.utils.llm_handler import chat_with_llm, check_ollama_connection, USE_IONOS
 
     lang = (lang or "it").lower()[:2]
@@ -498,10 +498,11 @@ async def get_documents_insights(refresh: bool = False, lang: str = "it"):
             return payload
 
         combined = "\n\n---\n\n".join(combined_parts)
-        insights = chat_with_llm(
+        insights = await asyncio.to_thread(
+            chat_with_llm,
             msgs["prompt"],
             [{"content": combined, "metadata": {"source": "multi-doc"}}],
-            lang=lang
+            None, None, lang
         )
 
         # Check if LLM returned an error
