@@ -268,12 +268,11 @@ async def extract_data(payload: dict):
                 return {"filename": fname, "error": str(e), "extracted": None, "source": "error", "fields": fields}
             if not text or not text.strip():
                 return {"filename": fname, "error": "Testo non estraibile", "extracted": None, "source": "error", "fields": fields}
-            # Fast-path: prova regex prima (0.1ms vs 3s LLM) — se trova importo+data validi, salta LLM
+            # Fast-path: prova regex prima (0.1ms vs 3s LLM) — solo per fatture, perché spese/stipendi hanno bisogno di categoria/mese via LLM
             regex_try = _regex_fallback(text)
             fast_ok = regex_try.get("importo") is not None and regex_try.get("data") is not None
-            # per preset stipendi, regex non ha importo_lordo, quindi non considerarlo fast_ok se preset è stipendi
-            if preset_key == "stipendi" and fast_ok:
-                # regex per stipendi produce solo importo generico, non lordo/netto — serve LLM
+            # per preset non-fatture (spese, stipendi, custom) serve LLM per categoria/fornitore/mese accurato
+            if preset_key != "fatture" and fast_ok:
                 fast_ok = False
             if fast_ok:
                 extracted = regex_try
