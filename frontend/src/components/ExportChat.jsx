@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { chatApi } from '../utils/api';
+import { useI18n, t } from '../utils/i18n';
 
 function ExportChat() {
+  const { lang } = useI18n(); const tr = p => t(lang,p);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [format, setFormat] = useState('txt');
@@ -27,8 +29,8 @@ function ExportChat() {
     const timestamp = new Date().toISOString().split('T')[0];
 
     if (format === 'txt') {
-      content = `LLM Wiki - Esportazione Chat\n`;
-      content += `Data: ${new Date().toLocaleDateString('it-IT')}\n`;
+      content = `${tr('export.txtHeader')}\n`;
+      content += `${tr('export.date')}: ${new Date().toLocaleDateString(lang === 'de' ? 'de-DE' : lang === 'en' ? 'en-GB' : 'it-IT')}\n`;
       content += '='.repeat(50) + '\n\n';
       history.forEach((item, idx) => {
         content += `[${idx + 1}] TU: ${item.user_message}\n`;
@@ -40,7 +42,7 @@ function ExportChat() {
       content = JSON.stringify(history, null, 2);
       downloadFile(content, `chat-export-${timestamp}.json`, 'application/json');
     } else if (format === 'md') {
-      content = `# LLM Wiki - Chat Export\n\n`;
+      content = `# ${tr('export.txtHeader')}\n\n`;
       history.forEach((item, idx) => {
         content += `## Domanda ${idx + 1}\n\n`;
         content += `**Tu:** ${item.user_message}\n\n`;
@@ -66,7 +68,7 @@ function ExportChat() {
           border: '3px solid rgba(74,158,255,0.1)', borderTop: '3px solid var(--accent-blue)',
           borderRadius: '50%', animation: 'spin 1s linear infinite', marginRight: '0.75rem',
         }}></div>
-        Caricamento...
+        {tr('export.loading')}
       </div>
     );
   }
@@ -78,12 +80,12 @@ function ExportChat() {
         color: 'var(--text-primary)', marginBottom: '1.5rem',
         display: 'flex', alignItems: 'center', gap: '0.5rem',
       }}>
-        <span style={{ fontSize: '1.2rem' }}>📋</span> Esporta Chat
+        <span style={{ fontSize: '1.2rem' }}>📋</span> {tr('export.title')}
       </h2>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         <div>
-          <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Formato</label>
+          <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '0.5rem' }}>{tr('export.formatLabel')}</label>
           <select
             value={format}
             onChange={(e) => setFormat(e.target.value)}
@@ -94,9 +96,9 @@ function ExportChat() {
               cursor: 'pointer', outline: 'none',
             }}
           >
-            <option value="txt">Testo (.txt)</option>
-            <option value="md">Markdown (.md)</option>
-            <option value="json">JSON (.json)</option>
+            <option value="txt">{tr('export.formatTxt')}</option>
+            <option value="md">{tr('export.formatMd')}</option>
+            <option value="json">{tr('export.formatJson')}</option>
           </select>
         </div>
 
@@ -106,8 +108,8 @@ function ExportChat() {
         }}>
           <span style={{ fontSize: '1.6rem' }}>📊</span>
           <div>
-            <p style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 500 }}>{history.length} messaggi</p>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.2rem' }}>Esporta l'intera cronologia chat</p>
+            <p style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 500 }}>{history.length} {tr('export.count')}</p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.2rem' }}>{tr('export.hint')}</p>
           </div>
         </div>
 
@@ -125,14 +127,14 @@ function ExportChat() {
           onMouseEnter={(e) => { if (history.length > 0) e.target.style.transform = 'translateY(-2px)'; }}
           onMouseLeave={(e) => { if (history.length > 0) e.target.style.transform = 'none'; }}
         >
-          📥 Esporta {format.toUpperCase()}
+          📥 {tr('export.exportBtn')} {format.toUpperCase()}
         </button>
       </div>
 
       {/* Preview */}
       {history.length > 0 && (
         <div style={{ marginTop: '1.5rem', animation: 'fadeInUp 0.4s ease-out' }}>
-          <h3 style={{ color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>Anteprima</h3>
+          <h3 style={{ color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>{tr('export.preview')}</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '256px', overflowY: 'auto' }}>
             {history.slice(0, 5).map((item, idx) => (
               <div key={idx} style={{
@@ -145,7 +147,7 @@ function ExportChat() {
             ))}
             {history.length > 5 && (
               <p style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.8rem', fontFamily: 'var(--font-mono)' }}>
-                +{history.length - 5} altri messaggi...
+                +{history.length - 5} {tr('export.moreMessages')}
               </p>
             )}
           </div>

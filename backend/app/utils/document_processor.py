@@ -43,40 +43,176 @@ def invalidate_processor_cache() -> None:
         _PROC_CACHE.clear()
 
 
+def _ionos_vision_ocr(image_path: str) -> str:
+    """Prova OCR via IONOS Vision (image → text). Ritorna stringa vuota se fallisce."""
+    try:
+        from app.config import IONOS_API_KEY, IONOS_BASE_URL, IONOS_VISION_MODEL, OCR_HYBRID_ENABLED
+        if not OCR_HYBRID_ENABLED or not IONOS_API_KEY:
+            return ""
+        import base64, requests
+        with open(image_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode()
+        # Determina mime
+        ext = Path(image_path).suffix.lower()
+        mime = "image/png" if ext==".png" else "image/jpeg"
+        url = f"{IONOS_BASE_URL}/chat/completions"
+        headers = {"Authorization": f"Bearer {IONOS_API_KEY}", "Content-Type": "application/json"}
+        payload = {
+            "model": IONOS_VISION_MODEL,
+            "messages": [
+                {"role": "system", "content": "Sei un OCR. Trascrivi fedelmente tutto il testo visibile nell'immagine, mantieni righe e numeri. Rispondi solo con il testo trascritto, senza commenti."},
+                {"role": "user", "content": [
+                    {"type": "text", "text": "Trascrivi questo documento:"},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}}
+                ]}
+            ],
+            "temperature": 0.0,
+            "max_tokens": 3000,
+        }
+        resp = requests.post(url, headers=headers, json=payload, timeout=60)
+        if resp.status_code==200:
+            j=resp.json()
+            txt=j["choices"][0]["message"]["content"]
+            return (txt or "").strip()
+        else:
+            # fallback: log ma non crash
+            print(f"[WARN] IONOS Vision OCR {resp.status_code}: {resp.text[:200]}")
+            return ""
+    except Exception as e:
+        print(f"[WARN] IONOS Vision exception: {e}")
+        return ""
+
 def extract_text_from_pdf(file_path: str) -> str:
-    """Estrae testo da file PDF (con OCR per scansioni immagini)"""
+    """Estrae testo da PDF — Hybrid: pypdf text → Tesseract per pagina → IONOS Vision fallback per pagine povere."""
     try:
         from pypdf import PdfReader
-        text = ""
+        from app.config import OCR_MIN_CHARS_PER_PAGE
         reader = PdfReader(file_path)
-        for page in reader.pages:
-            page_text = page.extract_text()
-            if page_text and page_text.strip():
-                text += page_text + "\n"
+        page_texts = []
+        has_text_pages = 0
+        for idx, page in enumerate(reader.pages):
+            txt = (page.extract_text() or "").strip()
+            if txt and len(txt) >= 20:
+                has_text_pages += 1
+            page_texts.append(txt)
 
-        # Se non c'è testo, prova con OCR via PNG temp esplicito
-        # (passare PIL.Image diretto a pytesseract crea PPM in TMPDIR che alcuni
-        # sandbox rifiutano — salvare come PNG su path noto è molto più affidabile).
-        if not text.strip():
-            try:
-                import pytesseract
-                import tempfile
-                from pdf2image import convert_from_path
-                images = convert_from_path(file_path, dpi=200)
-                with tempfile.TemporaryDirectory(prefix="llmwiki_ocr_") as td:
-                    for i, image in enumerate(images):
-                        png_path = os.path.join(td, f"page_{i}.png")
-                        image.save(png_path, "PNG")
-                        try:
-                            text += pytesseract.image_to_string(png_path, lang='ita+eng') + "\n"
-                        except Exception as inner:
-                            print(f"[WARN] OCR pagina {i} ({file_path}): {inner}")
-            except Exception as e:
-                print(f"[WARN] OCR PDF fallito ({file_path}): {e}")
+        # Se almeno metà pagine hanno testo, usa estrazione classica (mantiene page break)
+        if has_text_pages >= len(page_texts) / 2 and has_text_pages > 0:
+            text = "\n".join(t for t in page_texts if t)
+            # Ma per pagine vuote prova comunque OCR locale + Vision
+            if any(len(t.strip()) < 10 for t in page_texts):
+                # OCR solo per pagine vuote
+                try:
+                    import pytesseract, tempfile
+                    from pdf2image import convert_from_path
+                    images = convert_from_path(file_path, dpi=200)
+                    with tempfile.TemporaryDirectory(prefix="llmwiki_ocr_") as td:
+                        enriched=[]
+                        for i, t in enumerate(page_texts):
+                            if t and len(t.strip()) >= 20:
+                                enriched.append(t)
+                            else:
+                                img = images[i] if i < len(images) else None
+                                if img is None:
+                                    enriched.append(t)
+                                    continue
+                                png = os.path.join(td, f"p_{i}.png")
+                                img.save(png, "PNG")
+                                ocr = pytesseract.image_to_string(png, lang='ita+eng', config='--oem 1 --psm 6').strip()
+                                if len(ocr) < OCR_MIN_CHARS_PER_PAGE:
+                                    vision = _ionos_vision_ocr(png)
+                                    if len(vision) > len(ocr):
+                                        ocr = vision
+                                enriched.append(ocr if ocr else t)
+                        text = "\n".join(e for e in enriched if e)
+                except Exception as e:
+                    print(f"[WARN] OCR ibrido pagine vuote: {e}")
+            return text.strip() if text.strip() else ""
 
-        return text.strip() if text.strip() else ""
+        # Nessun testo utile → OCR completo ibrido pagina-per-pagina
+        try:
+            import pytesseract, tempfile
+            from pdf2image import convert_from_path
+            from app.config import OCR_MIN_CHARS_PER_PAGE
+            images = convert_from_path(file_path, dpi=200)
+            with tempfile.TemporaryDirectory(prefix="llmwiki_ocr_") as td:
+                out_parts=[]
+                for i, image in enumerate(images):
+                    png_path = os.path.join(td, f"page_{i}.png")
+                    image.save(png_path, "PNG")
+                    # Prima Tesseract locale
+                    try:
+                        ocr_text = pytesseract.image_to_string(png_path, lang='ita+eng', config='--oem 1 --psm 6').strip()
+                    except Exception as inner:
+                        print(f"[WARN] OCR Tesseract pagina {i}: {inner}")
+                        ocr_text=""
+                    # Se povero, prova IONOS Vision
+                    if len(ocr_text) < OCR_MIN_CHARS_PER_PAGE:
+                        vision = _ionos_vision_ocr(png_path)
+                        if vision and len(vision.strip()) > len(ocr_text):
+                            ocr_text = vision
+                            print(f"[INFO] Pagina {i+1} usata IONOS Vision ({len(vision)} chars)")
+                    if ocr_text:
+                        out_parts.append(ocr_text)
+                text = "\n".join(out_parts)
+                if text.strip():
+                    return text.strip()
+        except Exception as e:
+            print(f"[WARN] OCR ibrido completo fallito ({file_path}): {e}")
+
+        # Ultimo fallback: restituisci quello che pypdf aveva anche se scarso
+        fallback = "\n".join(t for t in page_texts if t)
+        return fallback.strip() if fallback.strip() else ""
     except Exception as e:
         raise ValueError(f"Errore lettura PDF: {str(e)}")
+
+
+def get_pdf_pages(file_path: str) -> list:
+    """Ritorna lista pagine [{page:int, text:str, source:str}] per Citations 2.0. Source: text|ocr_tesseract|ocr_ionos"""
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(file_path)
+        pages=[]
+        for idx, page in enumerate(reader.pages, 1):
+            t=(page.extract_text() or "").strip()
+            if t and len(t)>=20:
+                pages.append({"page": idx, "text": t, "source": "text"})
+            else:
+                # placeholder — fill via OCR hybrid path in extract_text_from_pdf
+                # per semplicità, se nessuna text, segna come ocr_needed e lascia text vuoto
+                # Il chiamante userà extract_text_from_pdf per il full text, ma pages mantiene page number
+                pages.append({"page": idx, "text": t, "source": "text" if t else "ocr_needed"})
+        # Se ci sono ocr_needed, prova a popolare con OCR (riusa extract logic ma per-page)
+        if any(p["source"]=="ocr_needed" for p in pages):
+            full = extract_text_from_pdf(file_path)
+            # stima split per pagina: se full contiene ~ uguale per pagine ocr, ridistribuisci uniforme? Semplice: lascia full come unico text per ora
+            # Meglio: ricalcola con pdf2image se disponibile
+            try:
+                import pytesseract, tempfile
+                from pdf2image import convert_from_path
+                from app.config import OCR_MIN_CHARS_PER_PAGE
+                images = convert_from_path(file_path, dpi=180)
+                with tempfile.TemporaryDirectory(prefix="llmwiki_pages_") as td:
+                    for i, p in enumerate(pages):
+                        if p["source"]!="ocr_needed":
+                            continue
+                        if i >= len(images): continue
+                        png = os.path.join(td, f"pg_{i}.png")
+                        images[i].save(png, "PNG")
+                        ocr = pytesseract.image_to_string(png, lang='ita+eng', config='--oem 1 --psm 6').strip()
+                        src="ocr_tesseract"
+                        if len(ocr) < OCR_MIN_CHARS_PER_PAGE:
+                            vision=_ionos_vision_ocr(png)
+                            if vision and len(vision)>len(ocr):
+                                ocr=vision; src="ocr_ionos"
+                        pages[i]["text"]=ocr
+                        pages[i]["source"]=src
+            except Exception as e:
+                print(f"[WARN] get_pdf_pages OCR fill: {e}")
+        return pages
+    except Exception as e:
+        print(f"[WARN] get_pdf_pages: {e}")
+        return []
 
 
 def extract_text_from_excel(file_path: str) -> str:

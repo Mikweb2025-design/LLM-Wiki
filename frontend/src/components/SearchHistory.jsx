@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { chatApi } from '../utils/api';
+import { useI18n, t } from '../utils/i18n';
 
 function SearchHistory() {
+  const { lang } = useI18n(); const tr = p => t(lang,p);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -32,20 +34,20 @@ function SearchHistory() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-white">Cronologia Chat</h2>
+        <h2 className="text-xl font-semibold text-white">{tr('history.title')}</h2>
         <button
           onClick={loadHistory}
           className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm"
         >
-          🔄 Aggiorna
+          {tr('history.refresh')}
         </button>
       </div>
 
       {history.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
           <div className="text-6xl mb-4">💬</div>
-          <p className="text-lg">Nessuna cronologia</p>
-          <p className="text-sm mt-2">Inizia una conversazione!</p>
+          <p className="text-lg">{tr('history.empty')}</p>
+          <p className="text-sm mt-2">{tr('history.emptyHint')}</p>
         </div>
       ) : (
         <div className="space-y-3">

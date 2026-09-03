@@ -91,6 +91,38 @@ def init_db():
             FOREIGN KEY(filename) REFERENCES documents(filename) ON DELETE CASCADE
         )
     """)
+    # WebDAV / Nextcloud sources
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS webdav_sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            url TEXT NOT NULL,
+            username TEXT NOT NULL,
+            password_enc TEXT NOT NULL,
+            remote_path TEXT NOT NULL DEFAULT '/',
+            active INTEGER DEFAULT 1,
+            last_sync TIMESTAMP,
+            last_status TEXT,
+            sync_interval_minutes INTEGER DEFAULT 15,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS webdav_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER NOT NULL,
+            href TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            etag TEXT,
+            size_bytes INTEGER,
+            last_modified TEXT,
+            content_type TEXT,
+            is_collection INTEGER DEFAULT 0,
+            indexed_at TIMESTAMP,
+            UNIQUE(source_id, href),
+            FOREIGN KEY(source_id) REFERENCES webdav_sources(id) ON DELETE CASCADE
+        )
+    """)
     # Indici per performance (query frequenti)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_extension ON documents(extension)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_created ON documents(created_at DESC)")
@@ -98,7 +130,17 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_history(created_at DESC)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tags_filename ON document_tags(filename)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tags_tag ON document_tags(tag)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_webdav_href ON webdav_files(href)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_webdav_source ON webdav_files(source_id)")
     conn.commit()
+    # Migrazione: aggiungi colonne mancanti se DB vecchio
+    try:
+        cols = [r[1] for r in cursor.execute("PRAGMA table_info(webdav_sources)").fetchall()]
+        if "sync_interval_minutes" not in cols:
+            cursor.execute("ALTER TABLE webdav_sources ADD COLUMN sync_interval_minutes INTEGER DEFAULT 15")
+            conn.commit()
+    except Exception:
+        pass
     # Migrazione: se DB vecchio senza nuove tabelle, ignora errori FK
     try:
         cursor.execute("PRAGMA foreign_keys=ON")
@@ -393,3 +435,129 @@ def get_documents_by_tag(tag: str) -> List[Dict]:
         ORDER BY d.created_at DESC
     """, (tag.lower(),))
     return [dict(r) for r in cur.fetchall()]
+
+
+# ---------------------------------------------------------------------------
+# WebDAV / Nextcloud — CRUD + file etag tracking
+# ---------------------------------------------------------------------------
+import base64 as _b64
+import os as _os
+
+def _webdav_encrypt(pw: str) -> str:
+    """Cifra password per storage. Prova Fernet, fallback base64 (dev)."""
+    try:
+        from cryptography.fernet import Fernet
+        from app.config import DATA_DIR
+        key_path = DATA_DIR / ".webdav_key"
+        if key_path.exists():
+            key = key_path.read_bytes().strip()
+        else:
+            key = Fernet.generate_key()
+            key_path.write_bytes(key)
+            try: _os.chmod(key_path, 0o600)
+            except: pass
+        f = Fernet(key)
+        return "fernet:" + f.encrypt(pw.encode()).decode()
+    except Exception:
+        return "b64:" + _b64.b64encode(pw.encode()).decode()
+
+def _webdav_decrypt(enc: str) -> str:
+    if enc.startswith("fernet:"):
+        try:
+            from cryptography.fernet import Fernet
+            from app.config import DATA_DIR
+            key_path = DATA_DIR / ".webdav_key"
+            key = key_path.read_bytes().strip()
+            f = Fernet(key)
+            return f.decrypt(enc[7:].encode()).decode()
+        except Exception:
+            return ""
+    if enc.startswith("b64:"):
+        try: return _b64.b64decode(enc[4:]).decode()
+        except: return ""
+    return enc  # legacy plaintext
+
+def add_webdav_source(name: str, url: str, username: str, password: str, remote_path: str = "/") -> int:
+    conn = get_db_connection()
+    enc = _webdav_encrypt(password)
+    # normalizza url e remote_path
+    url = url.rstrip("/")
+    if not remote_path.startswith("/"): remote_path = "/" + remote_path
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO webdav_sources (name, url, username, password_enc, remote_path, active)
+        VALUES (?, ?, ?, ?, ?, 1)
+        ON CONFLICT(name) DO UPDATE SET url=excluded.url, username=excluded.username, password_enc=excluded.password_enc, remote_path=excluded.remote_path, active=1
+    """, (name, url, username, enc, remote_path))
+    conn.commit()
+    cur.execute("SELECT id FROM webdav_sources WHERE name=?", (name,))
+    row = cur.fetchone()
+    log_activity("webdav_added", name, url + remote_path)
+    return row["id"] if row else -1
+
+def get_webdav_sources() -> List[Dict]:
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, name, url, username, remote_path, active, last_sync, last_status, sync_interval_minutes, created_at FROM webdav_sources ORDER BY name")
+    return [dict(r) for r in cur.fetchall()]
+
+def get_webdav_source(source_id: int = None, name: str = None) -> Optional[Dict]:
+    conn = get_db_connection()
+    cur = conn.cursor()
+    if source_id is not None:
+        cur.execute("SELECT * FROM webdav_sources WHERE id=?", (source_id,))
+    elif name is not None:
+        cur.execute("SELECT * FROM webdav_sources WHERE name=?", (name,))
+    else:
+        return None
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+def get_webdav_password(source: Dict) -> str:
+    return _webdav_decrypt(source.get("password_enc",""))
+
+def remove_webdav_source(source_id: int) -> bool:
+    try:
+        conn = get_db_connection()
+        conn.execute("DELETE FROM webdav_sources WHERE id=?", (source_id,))
+        conn.commit()
+        log_activity("webdav_removed", str(source_id))
+        return True
+    except Exception:
+        return False
+
+def update_webdav_sync_status(source_id: int, status: str, last_sync: str = None):
+    try:
+        import datetime as _dt
+        ts = last_sync or _dt.datetime.now().isoformat()
+        conn = get_db_connection()
+        conn.execute("UPDATE webdav_sources SET last_status=?, last_sync=? WHERE id=?", (status, ts, source_id))
+        conn.commit()
+    except Exception:
+        pass
+
+def upsert_webdav_file(source_id: int, href: str, filename: str, etag: str, size_bytes: int, last_modified: str, content_type: str, is_collection: int):
+    try:
+        conn = get_db_connection()
+        conn.execute("""
+            INSERT INTO webdav_files (source_id, href, filename, etag, size_bytes, last_modified, content_type, is_collection)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source_id, href) DO UPDATE SET etag=excluded.etag, size_bytes=excluded.size_bytes, last_modified=excluded.last_modified, content_type=excluded.content_type, is_collection=excluded.is_collection, filename=excluded.filename
+        """, (source_id, href, filename, etag, size_bytes, last_modified, content_type, is_collection))
+        conn.commit()
+    except Exception as e:
+        print(f"[WARN] upsert_webdav_file {e}")
+
+def get_webdav_files(source_id: int) -> List[Dict]:
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM webdav_files WHERE source_id=? ORDER BY filename", (source_id,))
+    return [dict(r) for r in cur.fetchall()]
+
+def delete_webdav_file(source_id: int, href: str):
+    try:
+        conn = get_db_connection()
+        conn.execute("DELETE FROM webdav_files WHERE source_id=? AND href=?", (source_id, href))
+        conn.commit()
+    except Exception:
+        pass

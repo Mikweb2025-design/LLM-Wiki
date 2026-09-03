@@ -35,6 +35,12 @@ else:
     IONOS_MODEL = os.getenv("IONOS_MODEL", "meta-llama/Llama-3.3-70B-Instruct")
 IONOS_BASE_URL = os.getenv("IONOS_BASE_URL", "https://openai.inference.de-txl.ionos.com/v1")
 
+# IONOS Vision per OCR Hybrid (se non impostato usa stesso base ma modello vision)
+IONOS_VISION_MODEL = os.getenv("IONOS_VISION_MODEL", "meta-llama/Llama-3.2-11B-Vision-Instruct")
+# soglia OCR: se Tesseract produce <50 chars per pagina, prova IONOS Vision
+OCR_HYBRID_ENABLED = os.getenv("OCR_HYBRID_ENABLED", "1") not in ("0","false","False")
+OCR_MIN_CHARS_PER_PAGE = int(os.getenv("OCR_MIN_CHARS_PER_PAGE", "50"))
+
 # App
 APP_NAME = "LLM Wiki"
 APP_VERSION = "1.0.0"

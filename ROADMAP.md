@@ -19,17 +19,17 @@
 
 ---
 
-## 🚧 Next — Q2 2026: Grafici Intelligenti da Chat
+## ✅ Done — Q2 2026: Grafici Intelligenti da Chat (2026-09-02)
 
-**Goal:** Chiedi in chat “fammi un grafico di tutti i miei guadagni” o “quanto ho speso per benzina? fammi un grafico” e ottieni risposta + grafico auto-generato, senza aprire il tab Grafici.
+**Goal:** Chiedi in chat “fammi un grafico di tutti i miei guadagni” o “quanto ho speso per benzina? fammi un grafico” e ottieni risposta + grafico auto-generato.
 
 | Feature | Description | Status |
 |---|---|---|
-| **Intent detection** | Backend chat rileva `grafico|chart|quanto ho speso|guadagn|benzina|spese` (IT/EN/DE) e triggera estrazione analytics sui documenti rilevanti al contesto. | Planned → **In Progress (backend done, frontend next)** |
-| **Auto-preset** | `guadagn|stipend|earnings` → `stipendi` (sum `importo_lordo`), `benzina|cibo|spesa` → `spese` (filter categoria), default `fatture`. `group_by` auto da query (`mese|month` → month). | Planned |
-| **Inline chart** | Risposta chat include `chart_data` renderizzato come Bar/Line/Pie sotto il testo (stesso SVG di Analytics). Streaming: chart inviato come evento finale `done`. | Planned |
-| **Configurazione utente** | In **Grafici** tab l’utente definisce template custom (campi + prompt) che la chat riusa. Es. “benzina” → categoria filtro. | Planned |
-| **Esempi** | `“Fammi un grafico di tutti i miei guadagni”` → stipendi per mese; `“Quanti soldi ho speso per benzina?”` → spese filtrate categoria=benzina per mese; `“Fammi un grafico delle spese per categoria”` → pie per categoria. | Planned |
+| **Intent detection** | Backend chat rileva `grafico|chart|quanto ho speso|guadagn|benzina|spese` (IT/EN/DE) e triggera estrazione analytics sui documenti rilevanti al contesto. | ✅ Done |
+| **Auto-preset** | `guadagn|stipend|earnings` → `stipendi` (sum `importo_lordo`), `benzina|cibo|spesa` → `spese` (filter categoria), default `fatture`. `group_by` auto da query (`mese|month` → month). | ✅ Done |
+| **Inline chart** | Risposta chat include `chart_data` renderizzato come Bar/Line/Pie sotto il testo (stesso SVG di Analytics). Streaming: chart inviato come evento finale `done`. | ✅ Done |
+| **Configurazione utente** | In **Grafici** tab l’utente definisce template custom (campi + prompt) che la chat riusa. | ✅ Done |
+| **Esempi** | `“Fammi un grafico di tutti i miei guadagni”` → stipendi per mese; `“Quanti soldi ho speso per benzina?”` → spese filtrate categoria=benzina per mese; `“Fammi un grafico delle spese per categoria”` → pie per categoria. | ✅ Done |
 
 ### Technical notes
 
@@ -49,18 +49,18 @@ POST /api/chat/stream → SSE ... → data: {"done":true, "chart":{...}}
 
 ---
 
-## 🚧 Next — Q2 2026: Nextcloud / WebDAV Source
+## ✅ Done — Q2 2026: Nextcloud / WebDAV Source (2026-09-03)
 
 **Goal:** Use your Nextcloud as a live document source — no manual upload.
 
 | Feature | Description | Status |
 |---|---|---|
-| **Nextcloud login** | `user / app-password` form in **Folders → Add WebDAV**. Validated via `PROPFIND` on `https://<host>/remote.php/dav/files/<user>/`. Stored encrypted in backend (keyring) or `.env` for dev. | Planned |
-| **Folder picker** | After login, `PROPFIND Depth:1` lists folders. User checks which to index (e.g. `/Documents`, `/Shared`). Persisted in `folders` table with `type='webdav'` + `url`, `username`. | Planned |
-| **Incremental sync** | Poll / webhook: `PROPFIND` + `getetag` per file. Only new/changed `etag` re-indexed; deleted files auto-removed from Chroma + DB. Background interval (default 15 min, configurable). | Planned |
-| **Auth variants** | App-password first. Later: **OAuth2 / Nextcloud Login Flow v2** (token, no password). | Planned |
-| **Filters** | By extension (PDF, Office…), by size, ignore `.hidden`, regex. | Planned |
-| **UI** | New tab **Roadmap** documents the flow; **Folders** shows WebDAV badge + sync status + “Sync now”. **Documents** shows source icon (local vs Nextcloud). | Planned |
+| **Nextcloud login** | `user / app-password` form in **Folders → Add WebDAV**. Validated via `PROPFIND` on `https://<host>/remote.php/dav/files/<user>/`. Stored encrypted (Fernet `.webdav_key` o b64 fallback). | ✅ Done |
+| **Folder picker** | After login, `PROPFIND Depth:1` lists folders. User checks which to index (e.g. `/Documents`, `/Shared`). Persisted in `webdav_sources` + `remote_path` + `url`, `username`. Breadcrumb + navigazione cartelle. | ✅ Done |
+| **Incremental sync** | `PROPFIND` + `getetag` per file. Only new/changed `etag` re-indexed; deleted files auto-removed from Chroma + DB. Cache `data/webdav_cache/<id>/`. | ✅ Done |
+| **Auth variants** | App-password first. Later: **OAuth2 / Nextcloud Login Flow v2** (token, no password). | Planned (app-password done) |
+| **Filters** | By extension (PDF, Office…), by size, ignore `.hidden`, regex. | ✅ Done (ext filter + max_files) |
+| **UI** | **Folders** mostra WebDAV badge + sync status + “Sync now” + “Sync tutte”; **Documents** shows source icon (☁️ Nextcloud vs 💾 Locale). | ✅ Done |
 
 ### Technical notes
 
@@ -83,20 +83,36 @@ Backend                → WebDAVClient (a`iohttp` + `lxml`) → process → Chr
 
 ---
 
-## 🔮 Q3 2026
+## ✅ Done — Q3 2026: Traduzione UI Completa (2026-09-03)
 
-- **OCR Hybrid** — Tesseract local + IONOS Vision for scanned PDFs fallback.
-- **Citations 2.0** — answers include `file.pdf: p. 3` + highlight in preview viewer.
-- **Users & Roles** — Nextcloud SSO (OpenID) → `viewer / editor / admin`. Per-folder ACL.
-- **Export** — chat export already exists; add PDF export of Q&A with sources.
+**Goal:** Tutte le voci di menu e contenuti tradotti IT/EN/DE — non solo i tab.
+
+| Feature | Description | Status |
+|---|---|---|
+| **Full i18n dictionary** | `frontend/src/utils/i18n.js` esteso da ~30 a ~250 chiavi: `common`, `dashboard`, `chat`, `documents`, `folders/webdav`, `search`, `upload`, `analytics`, `compare`, `export`, `settings`, `system`, `diagnostic`, `shortcuts`, `history`, `preview`, `roadmap`. | ✅ Done |
+| **Component refactor** | 14 componenti migrati a `useI18n` + `t(lang,key)`: `Dashboard`, `Chat`, `DocumentList`, `UploadForm`, `Folders` (locale+WebDAVPanel), `SearchWithFilters`, `Analytics`, `CompareDocuments`, `ExportChat`, `Settings`, `SystemStatus`, `DiagnosticPanel`, `KeyboardShortcuts`, `FilePreview` + badge sorgente `☁️ Nextcloud / 💾 Locale`. | ✅ Done |
+| **Build** | `npm run build` 137.45 kB gz, `frontend-build` sincronizzato, 18 file con `useI18n`, locale-aware `toLocaleString(lang)` e `speechSynthesis.lang`. | ✅ Done |
+
+---
+
+## 🚧 In Progress — Q3 2026: OCR Hybrid + Citations 2.0
+
+**Goal:** Scanned PDFs leggibili anche se Tesseract fallisce, e risposte citano `file.pdf p.3` con highlight.
+
+| Feature | Description | Status |
+|---|---|---|
+| **OCR Hybrid** | `document_processor.py`: `pypdf` text → per-pagina `Tesseract`; se <50 chars prova `IONOS Vision` (`meta-llama/Llama-3.2-11B-Vision-Instruct`, `data:image/png;base64`). Config `IONOS_VISION_MODEL`, `OCR_HYBRID_ENABLED`, `OCR_MIN_CHARS_PER_PAGE`. Funzioni `get_pdf_pages()` + `_ionos_vision_ocr()`. | ✅ Backend done, frontend wiring next |
+| **Citations 2.0** | `vector_store.py` page-aware chunks (`metadata.page`), `llm_handler.py` context `file.pdf p.3` + system prompt cita `filename p.N`, `chat.py` sources includono `page`+`highlight`. Viewer highlight via `#page=N` + snippet. | ✅ Backend done, viewer highlight next |
+| **Users & Roles** | Nextcloud SSO (OpenID) → `viewer / editor / admin`. Per-folder ACL. | 🔮 Planned (Q3) |
+| **Export PDF** | Chat export TXT/JSON/MD già done; aggiungere PDF `Q&A + sources + chart` via `reportlab` endpoint `POST /api/chat/export/pdf`. | 🔮 Planned (Q3) |
 
 ---
 
 ## 🔮 Q4 2026
 
-- **Generic WebDAV** — any WebDAV server (ownCloud, Seafile, Synology) via same client.
+- **Generic WebDAV** — any WebDAV server (ownCloud, Seafile, Synology) via same client — *già coperto dal client WebDAV attuale (httpx+lxml), solo branding*.
 - **Full offline pack** — `nomic-embed-text` + Ollama `llama3` bundled, air-gapped mode.
-- **Watch mode** — filesystem watcher (`watchdog`) for local folders already; extend to WebDAV push.
+- **Watch mode** — filesystem watcher (`watchdog`) for local folders already; extend to WebDAV push (poll interval configurabile già in `webdav_sources.sync_interval_minutes`).
 
 ---
 

@@ -100,4 +100,16 @@ export const voiceApi = {
   },
 };
 
+export const webdavApi = {
+  listSources: () => api.get('/api/webdav/sources'),
+  test: (url, username, password) => api.post('/api/webdav/test', { url, username, password }),
+  connect: (url, username, password, name, remote_path) => api.post('/api/webdav/connect', { url, username, password, name, remote_path }),
+  listFolders: (source_id, path = '/') => api.get('/api/webdav/folders', { params: { source_id, path } }),
+  addFolder: (source_id, remote_path, name) => api.post('/api/webdav/add-folder', { source_id, remote_path, name }),
+  deleteSource: (source_id) => api.delete(`/api/webdav/sources/${source_id}`),
+  sync: (source_id, max_files = 100) => api.post('/api/webdav/sync', { source_id, max_files }),
+  syncAll: (max_files = 100) => api.post('/api/webdav/sync', { all: true, max_files }),
+  files: (source_id) => api.get('/api/webdav/files', { params: { source_id } }),
+};
+
 export default api;

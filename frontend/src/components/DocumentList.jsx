@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { documentsApi } from '../utils/api';
+import { useI18n, t } from '../utils/i18n';
 
 function DocumentList({ showToast }) {
+  const { lang } = useI18n(); const tr = p => t(lang,p);
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -45,7 +47,7 @@ function DocumentList({ showToast }) {
       setDocuments(response.data);
       fetchTagsMap();
     } catch (error) {
-      console.error('Errore caricamento documenti:', error);
+      console.error(tr('documents.loadError'), error);
     } finally {
       setLoading(false);
     }
@@ -53,12 +55,12 @@ function DocumentList({ showToast }) {
 
   const handleAutoTagAll = async () => {
     try {
-      showToast?.('Tag automatico in corso...','info');
+      showToast?.(tr('documents.autoTagProgress'),'info');
       const res = await fetch('http://127.0.0.1:8000/api/documents/auto-tag/all', { method: 'POST' });
       const data = await res.json();
-      showToast?.(`Taggati ${data.tagged} documenti, ${data.skipped} già ok`,'success');
+      showToast?.(`${tr('documents.autoTagResult')} ${data.tagged} ${tr('documents.of').toLowerCase()} ${data.tagged + data.skipped}, ${data.skipped} ${tr('common.success').toLowerCase()}`, 'success');
       fetchTagsMap();
-    } catch(e){ showToast?.('Errore auto-tag: '+e.message,'error'); }
+    } catch(e){ showToast?.(`${tr('common.error')}: `+e.message,'error'); }
   };
 
   const pollScanStatus = async (onDone) => {
@@ -76,8 +78,8 @@ function DocumentList({ showToast }) {
           fetchDocuments();
           if (s.result) {
             const r = s.result;
-            if (r.new_files > 0) showToast(`Scansione completata: ${r.new_files} nuovi documenti`, 'success');
-            else showToast('Scansione completata: nessun nuovo documento', 'info');
+            if (r.new_files > 0) showToast(`${tr('documents.scanCompleteNew')}: ${r.new_files} ${tr('documents.indexed')}`, 'success');
+            else showToast(tr('documents.scanCompleteNone'), 'info');
             if (r.errors && r.errors.length > 0) console.error('Errori scansione:', r.errors);
           }
           onDone();
@@ -95,62 +97,62 @@ function DocumentList({ showToast }) {
     setScanning(true);
     try {
       await documentsApi.scan();
-      showToast('Scansione avviata...', 'info');
+      showToast(tr('documents.scanStarted'), 'info');
       pollScanStatus(() => setScanning(false));
     } catch (error) {
       console.error('Errore scansione:', error);
       if (error.response?.status === 409) {
-        showToast('Scansione già in corso', 'warning');
+        showToast(tr('documents.scan409'), 'warning');
       }
       setScanning(false);
     }
   };
 
   const handleDelete = async (filename) => {
-    if (!confirm(`Eliminare "${filename}"?`)) return;
+    if (!confirm(`${tr('documents.confirmDelete')} "${filename}"?`)) return;
     try {
       await documentsApi.delete(filename);
-      showToast(`"${filename}" eliminato`, 'success');
+      showToast(`"${filename}" ${tr('common.success')}`, 'success');
       fetchDocuments();
     } catch (error) {
       console.error('Errore eliminazione:', error);
-      showToast('Errore durante l\'eliminazione', 'error');
+      showToast(tr('documents.deleteError'), 'error');
     }
   };
 
   const handleReindex = async (filename) => {
-    if (!confirm(`Reindicizzare "${filename}"?`)) return;
+    if (!confirm(`${tr('documents.confirmReindex')} "${filename}"?`)) return;
     setReindexing(filename);
     try {
       await documentsApi.reindex(filename);
-      showToast(`"${filename}" reindicizzato con successo!`, 'success');
+      showToast(`"${filename}" ${tr('common.success')}!`, 'success');
       fetchDocuments();
     } catch (error) {
       console.error('Errore reindicizzazione:', error);
-      showToast('Errore durante la reindicizzazione', 'error');
+      showToast(tr('common.error'), 'error');
     } finally {
       setReindexing(null);
     }
   };
 
   const handleReindexAll = async () => {
-    if (!confirm('Reindicizzare TUTTI i documenti? Questa operazione potrebbe richiedere tempo.')) return;
+    if (!confirm(tr('documents.confirmReindexAll'))) return;
     setReindexAllLoading(true);
     setReindexProgress({ current: 0, total: documents.length });
     try {
       const response = await documentsApi.reindexAll();
       const data = response.data;
       setReindexProgress(null);
-      showToast(`Reindicizzati ${data.successes}/${data.total_files} documenti`, data.successes > 0 ? 'success' : 'warning');
+      showToast(`${tr('documents.reindexAllResult')} ${data.successes}/${data.total_files} ${tr('documents.indexed')}`, data.successes > 0 ? 'success' : 'warning');
       if (data.errors.length > 0) {
         console.error('Errori reindicizzazione:', data.errors);
-        showToast(`${data.errors.length} errori durante la reindicizzazione`, 'error');
+        showToast(`${data.errors.length} ${tr('common.error').toLowerCase()}`, 'error');
       }
       fetchDocuments();
     } catch (error) {
       setReindexProgress(null);
       console.error('Errore reindicizzazione totale:', error);
-      showToast('Errore durante la reindicizzazione: ' + error.message, 'error');
+      showToast(`${tr('common.error')}: ` + error.message, 'error');
     } finally {
       setReindexAllLoading(false);
     }
@@ -165,7 +167,7 @@ function DocumentList({ showToast }) {
       setDocContent(response.data.content);
     } catch (error) {
       console.error('Errore lettura documento:', error);
-      showToast('Errore durante la lettura del documento', 'error');
+      showToast(tr('documents.readError'), 'error');
       setReadingDoc(null);
     } finally {
       setLoadingContent(false);
@@ -179,14 +181,14 @@ function DocumentList({ showToast }) {
 
   const handleScanCustom = async () => {
     if (!customDir.trim()) {
-      showToast('Inserisci un percorso valido', 'warning');
+      showToast(tr('documents.invalidPath'), 'warning');
       return;
     }
     setScanningCustom(true);
     try {
       const response = await documentsApi.scanCustom(customDir);
       const data = response.data;
-      showToast(data.message || 'Scansione avviata...', 'info');
+      showToast(data.message || tr('documents.scanStarted'), 'info');
       if (!recentFolders.includes(customDir)) {
         setRecentFolders([customDir, ...recentFolders.slice(0, 4)]);
       }
@@ -195,9 +197,9 @@ function DocumentList({ showToast }) {
     } catch (error) {
       console.error('Errore scansione cartella personalizzata:', error);
       if (error.response?.status === 409) {
-        showToast('Scansione già in corso', 'warning');
+        showToast(tr('documents.scan409'), 'warning');
       } else {
-        showToast('Errore durante la scansione: ' + (error.response?.data?.detail || error.message), 'error');
+        showToast(`${tr('common.error')}: ` + (error.response?.data?.detail || error.message), 'error');
       }
       setScanningCustom(false);
     }
@@ -222,17 +224,17 @@ function DocumentList({ showToast }) {
 
   const handleBatchDelete = async () => {
     if (selectedFiles.size === 0) return;
-    if (!confirm(`Eliminare ${selectedFiles.size} documento/i selezionato/i?`)) return;
+    if (!confirm(`${tr('documents.confirmDelete')} ${selectedFiles.size} ${tr('documents.selectedCount')}?`)) return;
     setBatchLoading(true);
     try {
       const filenames = Array.from(selectedFiles);
       const response = await documentsApi.batchDelete(filenames);
       const data = response.data;
-      showToast(`Eliminati ${data.count} documenti`, 'success');
+      showToast(`${tr('common.success')}: ${data.count} ${tr('documents.indexed')}`, 'success');
       setSelectedFiles(new Set());
       fetchDocuments();
     } catch (error) {
-      showToast("Errore durante l'eliminazione multipla", 'error');
+      showToast(tr('documents.deleteError'), 'error');
     } finally {
       setBatchLoading(false);
     }
@@ -240,17 +242,17 @@ function DocumentList({ showToast }) {
 
   const handleBatchReindex = async () => {
     if (selectedFiles.size === 0) return;
-    if (!confirm(`Reindicizzare ${selectedFiles.size} documento/i selezionato/i?`)) return;
+    if (!confirm(`${tr('documents.confirmReindex')} ${selectedFiles.size} ${tr('documents.selectedCount')}?`)) return;
     setBatchLoading(true);
     try {
       const filenames = Array.from(selectedFiles);
       const response = await documentsApi.batchReindex(filenames);
       const data = response.data;
-      showToast(`Reindicizzati ${data.successes}/${data.total} documenti`, 'success');
+      showToast(`${tr('documents.reindexAllResult')} ${data.successes}/${data.total} ${tr('documents.indexed')}`, 'success');
       setSelectedFiles(new Set());
       fetchDocuments();
     } catch (error) {
-      showToast("Errore durante la reindicizzazione multipla", 'error');
+      showToast(tr('common.error'), 'error');
     } finally {
       setBatchLoading(false);
     }
@@ -262,7 +264,7 @@ function DocumentList({ showToast }) {
     try {
       const response = await documentsApi.scanCustom(customDir);
       const data = response.data;
-      showToast(`Scansione avviata per ${data.total_files || '?'} file...`, 'info');
+      showToast(`${tr('documents.scanStarted')} ${data.total_files || '?'} ${tr('documents.segments')}...`, 'info');
       pollScanStatus(() => setLoadingPreview(false));
     } catch (error) {
       console.error('Errore preview:', error);
@@ -292,6 +294,7 @@ function DocumentList({ showToast }) {
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
+  const isWebDAV = (doc) => (doc.file_path || '').includes('webdav_cache') || (doc.filename||'').includes('__webdav');
 
   const tagOptions = useMemo(()=>{
     const all = new Set(Object.values(tagsMap).flat());
@@ -343,7 +346,7 @@ function DocumentList({ showToast }) {
           animation: 'spin 1s linear infinite',
           marginRight: '0.75rem',
         }}></div>
-        Caricamento...
+        {tr('common.loading')}
       </div>
     );
   }
@@ -369,7 +372,7 @@ function DocumentList({ showToast }) {
           gap: '0.5rem',
         }}>
           <span style={{ fontSize: '1.2rem' }}>📄</span>
-          Documenti Indicizzati
+          {tr('documents.title')}
           <span style={{
             fontSize: '0.8rem',
             backgroundColor: 'rgba(74, 158, 255, 0.1)',
@@ -398,7 +401,7 @@ function DocumentList({ showToast }) {
                   opacity: batchLoading ? 0.5 : 1,
                 }}
               >
-                {batchLoading ? '...' : `🔄 Reindicizza (${selectedFiles.size})`}
+                {batchLoading ? '...' : `🔄 ${tr('documents.batchReindex')} (${selectedFiles.size})`}
               </button>
               <button
                 onClick={handleBatchDelete}
@@ -414,7 +417,7 @@ function DocumentList({ showToast }) {
                   opacity: batchLoading ? 0.5 : 1,
                 }}
               >
-                {batchLoading ? '...' : `🗑️ Elimina (${selectedFiles.size})`}
+                {batchLoading ? '...' : `🗑️ ${tr('documents.batchDelete')} (${selectedFiles.size})`}
               </button>
             </>
           )}
@@ -435,7 +438,7 @@ function DocumentList({ showToast }) {
             onMouseEnter={(e) => { if (!reindexAllLoading) { e.target.style.transform = 'translateY(-1px)'; } }}
             onMouseLeave={(e) => { e.target.style.transform = 'none'; }}
           >
-            {reindexAllLoading ? '⏳ Reindicizzazione...' : '🔄 Reindicizza Tutto'}
+            {reindexAllLoading ? `⏳ ${tr('documents.reindexing')}` : `🔄 ${tr('documents.reindexAll')}`}
           </button>
           <button
             onClick={handleScan}
@@ -454,13 +457,13 @@ function DocumentList({ showToast }) {
             onMouseEnter={(e) => { if (!scanning) { e.target.style.background = 'rgba(255,255,255,0.08)'; e.target.style.color = 'var(--text-primary)'; } }}
             onMouseLeave={(e) => { e.target.style.background = 'var(--bg-glass)'; e.target.style.color = 'var(--text-secondary)'; }}
           >
-            {scanning ? '⏳ Scansione...' : '🔍 Scansiona Cartella'}
+            {scanning ? `⏳ ${tr('common.loading')}` : `🔍 ${tr('documents.scanFolder')}`}
           </button>
           {scanProgress && (
             <div style={{ width: '100%', marginTop: '0.5rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                <span>Indicizzazione: {scanProgress.processed}/{scanProgress.total}</span>
-                <span>{scanProgress.pct}% · {scanProgress.newFiles} nuovi</span>
+                <span>{tr('documents.scanProgress')}: {scanProgress.processed}/{scanProgress.total}</span>
+                <span>{scanProgress.pct}% · {scanProgress.newFiles} {tr('documents.indexed')}</span>
               </div>
               <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
                 <div style={{ width: `${scanProgress.pct}%`, height: '100%', background: 'linear-gradient(90deg, #4a9eff, #a855f7)', borderRadius: '3px', transition: 'width 0.5s ease' }} />
@@ -478,9 +481,9 @@ function DocumentList({ showToast }) {
               fontSize: '0.85rem',
               cursor: 'pointer',
             }}
-            title="Tag automatici per tutti i documenti"
+            title={tr('documents.autoTagBtn')}
           >
-            🏷️ Auto-Tag
+            🏷️ {tr('documents.autoTagBtn')}
           </button>
           <button
             onClick={fetchDocuments}
@@ -497,7 +500,7 @@ function DocumentList({ showToast }) {
             onMouseEnter={(e) => { e.target.style.background = 'rgba(255,255,255,0.08)'; e.target.style.color = 'var(--text-primary)'; }}
             onMouseLeave={(e) => { e.target.style.background = 'var(--bg-glass)'; e.target.style.color = 'var(--text-secondary)'; }}
           >
-            🔄 Aggiorna
+            {tr('common.refresh')}
           </button>
         </div>
       </div>
@@ -508,7 +511,7 @@ function DocumentList({ showToast }) {
           type="text"
           value={searchFilter}
           onChange={(e) => setSearchFilter(e.target.value)}
-          placeholder="Cerca documenti..."
+          placeholder={tr('documents.searchPlaceholder')}
           style={{
             flex: 1,
             minWidth: '200px',
@@ -540,9 +543,9 @@ function DocumentList({ showToast }) {
             outline: 'none',
           }}
         >
-          <option value="name">Nome</option>
-          <option value="size">Dimensione</option>
-          <option value="date">Data</option>
+          <option value="name">{tr('documents.sortName')}</option>
+          <option value="size">{tr('documents.sortSize')}</option>
+          <option value="date">{tr('documents.sortDate')}</option>
         </select>
         <button
           onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
@@ -556,7 +559,7 @@ function DocumentList({ showToast }) {
             cursor: 'pointer',
             transition: 'all 0.2s',
           }}
-          title={sortOrder === 'asc' ? 'Crescente' : 'Decrescente'}
+          title={sortOrder === 'asc' ? 'asc' : 'desc'}
         >
           {sortOrder === 'asc' ? '↑' : '↓'}
         </button>
@@ -573,7 +576,7 @@ function DocumentList({ showToast }) {
             cursor: 'pointer',
           }}
         >
-          <option value="all">Tutti i tag</option>
+          <option value="all">{tr('documents.allTags')}</option>
           {tagOptions.map(t=> <option key={t} value={t}>{t} ({(tagsMap && Object.values(tagsMap).flat().filter(x=>x===t).length)})</option>)}
         </select>
       </div>
@@ -588,7 +591,7 @@ function DocumentList({ showToast }) {
           borderRadius: '12px',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-            <p style={{ fontSize: '0.85rem', color: 'var(--accent-blue)', fontWeight: 500 }}>Reindicizzazione in corso...</p>
+            <p style={{ fontSize: '0.85rem', color: 'var(--accent-blue)', fontWeight: 500 }}>{tr('documents.reindexing')}</p>
             {reindexProgress && (
               <span style={{ fontSize: '0.75rem', color: 'var(--accent-blue)' }}>{reindexProgress.current}/{reindexProgress.total}</span>
             )}
@@ -615,8 +618,8 @@ function DocumentList({ showToast }) {
           color: 'var(--text-secondary)',
         }}>
           <div style={{ fontSize: '3rem', marginBottom: '1rem', opacity: 0.6 }}>📭</div>
-          <p style={{ fontSize: '1.1rem', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>Nessun documento indicizzato</p>
-          <p style={{ fontSize: '0.85rem' }}>Carica file o scansiona la cartella documenti</p>
+          <p style={{ fontSize: '1.1rem', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>{tr('documents.noDocs')}</p>
+          <p style={{ fontSize: '0.85rem' }}>{tr('documents.noDocsHint')}</p>
         </div>
       ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -637,7 +640,7 @@ function DocumentList({ showToast }) {
                 style={{ accentColor: 'var(--accent-blue)', width: '16px', height: '16px', cursor: 'pointer' }}
               />
               <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                {selectedFiles.size > 0 ? `${selectedFiles.size} selezionati` : 'Seleziona tutti'}
+                {selectedFiles.size > 0 ? `${selectedFiles.size} ${tr('documents.selectedCount')}` : tr('documents.selectAll')}
               </span>
             </div>
           )}
@@ -682,10 +685,11 @@ function DocumentList({ showToast }) {
                     textOverflow: 'ellipsis',
                     marginBottom: '0.2rem',
                   }}>{doc.filename}</p>
-                  <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                  <div style={{ display: 'flex', gap: '0.6rem', fontSize: '0.75rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', alignItems:'center', flexWrap:'wrap' }}>
                     <span>{doc.extension?.toUpperCase()}</span>
                     <span>{formatSize(doc.size_bytes)}</span>
                     <span>{new Date(doc.modified).toLocaleDateString('it-IT')}</span>
+                    <span title={isWebDAV(doc)?tr('documents.sourceNextcloud'):tr('documents.sourceLocal')} style={{ fontSize:'0.65rem', padding:'0.1rem 0.35rem', borderRadius:'6px', background: isWebDAV(doc)?'rgba(74,158,255,0.12)':'rgba(255,255,255,0.06)', color: isWebDAV(doc)?'var(--accent-blue)':'var(--text-secondary)', border:'1px solid var(--border-glass)' }}>{isWebDAV(doc)?tr('documents.badgeNextcloud'):tr('documents.badgeLocal')}</span>
                   </div>
                   {(tagsMap[doc.filename]||[]).length>0 && (
                     <div style={{ display:'flex', gap:'0.3rem', marginTop:'0.3rem', flexWrap:'wrap' }}>
@@ -711,7 +715,7 @@ function DocumentList({ showToast }) {
                   }}
                   onMouseEnter={(e) => { e.target.style.background = 'rgba(126, 231, 135, 0.1)'; }}
                   onMouseLeave={(e) => { e.target.style.background = 'rgba(126, 231, 135, 0.05)'; }}
-                  title="Leggi documento"
+                  title={tr('preview.noContent')}
                 >
                   📖
                 </button>
@@ -731,7 +735,7 @@ function DocumentList({ showToast }) {
                   }}
                   onMouseEnter={(e) => { if (reindexing !== doc.filename) { e.target.style.background = 'rgba(74, 158, 255, 0.1)'; } }}
                   onMouseLeave={(e) => { e.target.style.background = 'rgba(74, 158, 255, 0.05)'; }}
-                  title="Reindicizza"
+                  title={tr('documents.reindex')}
                 >
                   {reindexing === doc.filename ? '⏳' : '🔄'}
                 </button>
@@ -749,7 +753,7 @@ function DocumentList({ showToast }) {
                   }}
                   onMouseEnter={(e) => { e.target.style.background = 'rgba(255, 85, 85, 0.1)'; }}
                   onMouseLeave={(e) => { e.target.style.background = 'rgba(255, 85, 85, 0.05)'; }}
-                  title="Elimina"
+                  title={tr('common.remove')}
                 >
                   🗑️
                 </button>
@@ -776,10 +780,10 @@ function DocumentList({ showToast }) {
           alignItems: 'center',
           gap: '0.5rem',
         }}>
-          <span style={{ fontSize: '1rem' }}>📂</span> Scansiona cartella personalizzata
+          <span style={{ fontSize: '1rem' }}>📂</span> {tr('documents.customScanTitle')}
         </p>
         <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-          I file verranno indicizzati senza essere spostati. I file già presenti verranno ignorati automaticamente.
+          {tr('documents.customScanHint')}
         </p>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.75rem' }}>
@@ -841,7 +845,7 @@ function DocumentList({ showToast }) {
               opacity: loadingPreview ? 0.5 : 1,
               transition: 'all 0.2s',
             }}
-            title="Anteprima file"
+            title={tr('documents.preview')}
           >
             {loadingPreview ? '⏳' : '👁️'}
           </button>
@@ -862,7 +866,7 @@ function DocumentList({ showToast }) {
             onMouseEnter={(e) => { if (!scanningCustom) { e.target.style.transform = 'translateY(-1px)'; } }}
             onMouseLeave={(e) => { e.target.style.transform = 'none'; }}
           >
-            {scanningCustom ? '⏳ Scansione...' : '🔍 Scansiona e Indicizza'}
+            {scanningCustom ? `⏳ ${tr('common.loading')}` : `🔍 ${tr('documents.customScanBtn')}`}
           </button>
         </div>
       </div>
@@ -922,7 +926,7 @@ function DocumentList({ showToast }) {
             </div>
             <div style={{ padding: '1.5rem', overflowY: 'auto', maxHeight: 'calc(80vh - 80px)' }}>
               {loadingContent ? (
-                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>Caricamento...</div>
+                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>{tr('common.loading')}</div>
               ) : (
                 <pre style={{
                   whiteSpace: 'pre-wrap',
@@ -932,7 +936,7 @@ function DocumentList({ showToast }) {
                   fontFamily: 'var(--font-sans)',
                   margin: 0,
                 }}>
-                  {docContent || 'Nessun contenuto disponibile'}
+                  {docContent || tr('documents.noContent')}
                 </pre>
               )}
             </div>

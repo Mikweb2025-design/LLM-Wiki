@@ -1,7 +1,9 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { documentsApi } from '../utils/api';
+import { useI18n, t } from '../utils/i18n';
 
 function UploadForm() {
+  const { lang } = useI18n(); const tr = p => t(lang,p);
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState({});
@@ -23,11 +25,11 @@ function UploadForm() {
       acceptedTypes.includes(f.type) || /\.(pdf|png|jpe?g|tiff|bmp|xlsx?|docx|txt|csv)$/i.test(f.name)
     );
     if (newFiles.length < fileList.length) {
-      setError(`${fileList.length - newFiles.length} file non supportati rimossi`);
+      setError(`${fileList.length - newFiles.length} ${tr('upload.unsupportedRemoved')}`);
     }
     setFiles(prev => [...prev, ...newFiles]);
-    setError('');
-  }, []);
+    if (newFiles.length === fileList.length) setError('');
+  }, [lang]);
 
   const handleDrag = (e) => {
     e.preventDefault(); e.stopPropagation();
@@ -56,7 +58,7 @@ function UploadForm() {
         setProgress(prev => ({ ...prev, [i]: 'success' }));
         results.push({ filename: file.name, status: 'success', ...response.data });
       } catch (error) {
-        let errorMsg = 'Errore sconosciuto';
+        let errorMsg = tr('upload.unknownError');
         if (error.response?.data?.detail) {
           errorMsg = typeof error.response.data.detail === 'string'
             ? error.response.data.detail
@@ -93,7 +95,7 @@ function UploadForm() {
         fontSize: '1.3rem', fontWeight: 600, color: 'var(--text-primary)',
         marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem',
       }}>
-        <span style={{ fontSize: '1.2rem' }}>📤</span> Carica Documenti
+        <span style={{ fontSize: '1.2rem' }}>📤</span> {tr('upload.title')}
       </h2>
 
       {error && (
@@ -119,9 +121,9 @@ function UploadForm() {
       >
         <div style={{ fontSize: '3rem', marginBottom: '1rem', opacity: 0.8 }}>📂</div>
         <p style={{ color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 500, marginBottom: '0.5rem' }}>
-          Trascina qui i file
+          {dragActive ? tr('upload.dragActive') : tr('upload.dropTitle')}
         </p>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1.25rem' }}>oppure clicca per selezionare</p>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1.25rem' }}>{tr('upload.dropHint')}</p>
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
           padding: '0.75rem 1.5rem',
@@ -132,7 +134,7 @@ function UploadForm() {
           onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
           onMouseLeave={(e) => e.currentTarget.style.transform = 'none'}
         >
-          <span>📁</span> Scegli File
+          <span>📁</span> {tr('upload.chooseFile')}
         </div>
         <input
           ref={fileInputRef} type="file" multiple
@@ -141,7 +143,7 @@ function UploadForm() {
           style={{ display: 'none' }}
         />
         <div style={{ marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-          PDF, Immagini (PNG, JPG, TIFF, BMP), Excel, Word, TXT, CSV
+          {tr('upload.formatsHint')}
         </div>
       </div>
 
@@ -150,7 +152,7 @@ function UploadForm() {
         <div style={{ marginBottom: '1.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
             <h3 style={{ color: 'var(--text-primary)', fontSize: '0.95rem', fontWeight: 500 }}>
-              File selezionati ({files.length})
+              {tr('upload.selectedCount')} ({files.length})
             </h3>
             <button
               onClick={() => { setFiles([]); setProgress({}); }}
@@ -160,7 +162,7 @@ function UploadForm() {
               }}
               onMouseEnter={(e) => e.target.style.opacity = 0.7}
               onMouseLeave={(e) => e.target.style.opacity = 1}
-            >[remove all]</button>
+            >{tr('upload.removeAll')}</button>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {files.map((file, index) => (
@@ -211,7 +213,7 @@ function UploadForm() {
             onMouseEnter={(e) => { if (!uploading) e.target.style.transform = 'translateY(-2px)'; }}
             onMouseLeave={(e) => { if (!uploading) e.target.style.transform = 'none'; }}
           >
-            {uploading ? '⏳ Caricamento in corso...' : `📤 Carica ${files.length} file`}
+            {uploading ? `⏳ ${tr('upload.uploading')}` : `📤 ${tr('upload.uploadBtn')} ${files.length} file`}
           </button>
         </div>
       )}
@@ -219,7 +221,7 @@ function UploadForm() {
       {/* Results */}
       {results.length > 0 && (
         <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
-          <h3 style={{ color: 'var(--text-primary)', fontSize: '0.95rem', fontWeight: 500, marginBottom: '0.75rem' }}>Risultati</h3>
+          <h3 style={{ color: 'var(--text-primary)', fontSize: '0.95rem', fontWeight: 500, marginBottom: '0.75rem' }}>{tr('upload.results')}</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {results.map((result, index) => (
               <div key={index} style={{
@@ -234,7 +236,7 @@ function UploadForm() {
                     <p style={{ color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 500 }}>{result.filename}</p>
                     {result.status === 'success' && (
                       <p style={{ color: 'var(--accent-green)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
-                        Chunks aggiunti: {result.chunks_added}
+                        {tr('upload.chunksAdded')}: {result.chunks_added}
                       </p>
                     )}
                     {result.status === 'error' && (

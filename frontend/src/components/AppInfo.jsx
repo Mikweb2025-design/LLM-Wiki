@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { API_URL } from '../utils/api';
+import { useI18n, t } from '../utils/i18n';
 
 function AppInfo() {
+  const { lang } = useI18n(); const tr = p => t(lang,p);
   const [stats, setStats] = useState({
     backend: false,
     frontend: false,
@@ -36,18 +38,18 @@ function AppInfo() {
       <div className="bg-gray-900/90 backdrop-blur-sm rounded-2xl p-4 border border-gray-800 shadow-2xl min-w-[300px]">
         <h3 className="text-white font-bold mb-3 flex items-center gap-2">
           <span className="text-2xl">🧠</span>
-          Stato Sistema
+          {tr('system.title')}
         </h3>
         
         <div className="space-y-2">
           <StatusRow label="Backend API" status={stats.backend} />
           <StatusRow label="Frontend" status={stats.frontend} />
-          <StatusRow label="Modello AI" value="IONOS Llama3.3" />
+          <StatusRow label={tr('settings.model')} value="IONOS Llama3.3" />
         </div>
         
         <div className="mt-4 pt-3 border-t border-gray-800">
           <p className="text-xs text-gray-500 text-center">
-            LLM Wiki v1.0.0
+            {tr('settings.aboutApp')} v1.0.0
           </p>
         </div>
       </div>

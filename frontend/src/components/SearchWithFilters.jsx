@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { documentsApi } from '../utils/api';
+import { useI18n, t } from '../utils/i18n';
 
 // debounce helper (300ms) — evita di spammare /search ad ogni tasto
 function useDebouncedCallback(fn, delay = 300) {
@@ -11,6 +12,7 @@ function useDebouncedCallback(fn, delay = 300) {
 }
 
 function SearchWithFilters() {
+  const { lang } = useI18n(); const tr = p => t(lang,p);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -78,9 +80,9 @@ function SearchWithFilters() {
     setLoadingContent(true);
     try {
       const response = await documentsApi.content(filename);
-      setDocContent(response.data?.content || 'Nessun contenuto disponibile');
+      setDocContent(response.data?.content || tr('common.noData'));
     } catch (e) {
-      setDocContent('Errore nel caricamento: ' + e.message);
+      setDocContent(`${tr('common.error')}: ` + e.message);
     } finally {
       setLoadingContent(false);
     }
@@ -93,7 +95,7 @@ function SearchWithFilters() {
         color: 'var(--text-primary)', marginBottom: '1.5rem',
         display: 'flex', alignItems: 'center', gap: '0.5rem',
       }}>
-        <span style={{ fontSize: '1.2rem' }}>🔍</span> Ricerca Avanzata
+        <span style={{ fontSize: '1.2rem' }}>🔍</span> {tr('search.title')}
       </h2>
 
       {/* Search Input */}
@@ -101,7 +103,7 @@ function SearchWithFilters() {
         <input
           type="text" value={query} onChange={(e) => { setQuery(e.target.value); debouncedSearch(e.target.value); }}
           onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-          placeholder="Cerca nei documenti (min 3 caratteri, debounce 400ms)..."
+          placeholder={tr('search.placeholder')}
           style={{
             flex: 1, background: 'var(--bg-glass)', border: '1px solid var(--border-glass)',
             borderRadius: '12px', padding: '0.75rem 1rem', color: 'var(--text-primary)',
@@ -135,10 +137,10 @@ function SearchWithFilters() {
             fontSize: '0.85rem', fontFamily: 'var(--font-sans)', cursor: 'pointer', outline: 'none',
           }}
         >
-          <option value="all">Tutti i tipi</option>
-          <option value="pdf">PDF</option>
-          <option value="docx">Word</option>
-          <option value="xlsx">Excel</option>
+          <option value="all">{tr('search.allTypes')}</option>
+          <option value="pdf">{tr('search.typePdf')}</option>
+          <option value="docx">{tr('search.typeWord')}</option>
+          <option value="xlsx">{tr('search.typeExcel')}</option>
           <option value="txt">TXT</option>
           <option value="csv">CSV</option>
         </select>
@@ -151,10 +153,10 @@ function SearchWithFilters() {
             fontSize: '0.85rem', fontFamily: 'var(--font-sans)', cursor: 'pointer', outline: 'none',
           }}
         >
-          <option value="all">Tutte le dimensioni</option>
-          <option value="small">Piccoli (&lt;1MB)</option>
-          <option value="medium">Medi (1-10MB)</option>
-          <option value="large">Grandi (&gt;10MB)</option>
+          <option value="all">{tr('search.allSizes')}</option>
+          <option value="small">{tr('search.small')}</option>
+          <option value="medium">{tr('search.medium')}</option>
+          <option value="large">{tr('search.large')}</option>
         </select>
 
         <select
@@ -165,8 +167,8 @@ function SearchWithFilters() {
             fontSize: '0.85rem', fontFamily: 'var(--font-sans)', cursor: 'pointer', outline: 'none',
           }}
         >
-          <option value="score">Per rilevanza</option>
-          <option value="name">Per nome</option>
+          <option value="score">{tr('search.byRelevance')}</option>
+          <option value="name">{tr('search.byName')}</option>
         </select>
 
         <button
@@ -178,7 +180,7 @@ function SearchWithFilters() {
           }}
           onMouseEnter={(e) => { e.target.style.background = 'rgba(255,255,255,0.05)'; e.target.style.color = 'var(--text-primary)'; }}
           onMouseLeave={(e) => { e.target.style.background = 'var(--bg-glass)'; e.target.style.color = 'var(--text-secondary)'; }}
-        >[reset filters]</button>
+        >{tr('search.reset')}</button>
       </div>
 
       {/* Results */}
@@ -189,7 +191,7 @@ function SearchWithFilters() {
             color: 'var(--text-primary)', marginBottom: '1rem',
             display: 'flex', alignItems: 'center', gap: '0.5rem',
           }}>
-            Risultati ({results.length})
+            {tr('search.results')} ({results.length})
             <span style={{
               fontSize: '0.7rem', background: 'rgba(74,158,255,0.1)', color: 'var(--accent-blue)',
               padding: '0.15rem 0.5rem', borderRadius: '6px', fontWeight: 400,
@@ -222,7 +224,7 @@ function SearchWithFilters() {
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                       }}>{doc.metadata?.filename || doc.filename}</p>
                       <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontFamily: 'var(--font-mono)', marginTop: '0.2rem' }}>
-                        {doc.metadata?.extension?.toUpperCase() || 'FILE'} • Score: {doc.score?.toFixed(2)}
+                        {doc.metadata?.extension?.toUpperCase() || 'FILE'} • {tr('search.score')}: {doc.score?.toFixed(2)}
                       </p>
                       {/* Content preview */}
                       <p style={{
@@ -239,7 +241,7 @@ function SearchWithFilters() {
                       fontSize: '0.7rem', background: 'rgba(126,231,135,0.08)', color: 'var(--accent-green)',
                       padding: '0.2rem 0.5rem', borderRadius: '4px', fontFamily: 'var(--font-mono)',
                     }}>
-                      {((doc.score || 0) * 100).toFixed(0)}% match
+                      {((doc.score || 0) * 100).toFixed(0)}% {tr('search.match')}
                     </span>
                   </div>
                 </div>
@@ -252,7 +254,8 @@ function SearchWithFilters() {
       {query && !loading && results.length === 0 && (
         <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
           <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem', opacity: 0.6 }}>🔍</div>
-          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '0.9rem' }}>Nessun risultato per "{query}"</p>
+          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '0.9rem' }}>{tr('search.noResultsFor')} "{query}"</p>
+          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '0.8rem', marginTop:'0.4rem' }}>{tr('search.tryDifferent')}</p>
         </div>
       )}
 

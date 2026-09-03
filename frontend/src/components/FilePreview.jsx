@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { documentsApi, API_URL } from '../utils/api';
+import { useI18n, t } from '../utils/i18n';
 
 function FilePreview({ filename, onClose }) {
+  const { lang } = useI18n(); const tr = p => t(lang,p);
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [type, setType] = useState('');
@@ -23,9 +25,9 @@ function FilePreview({ filename, onClose }) {
       try {
         const response = await fetch(`${API_URL}/api/documents/content/${encodeURIComponent(filename)}`);
         const data = await response.json();
-        setContent(data.content || 'Nessun contenuto disponibile');
+        setContent(data.content || tr('preview.noContent'));
       } catch (e) {
-        setContent('Errore nel caricamento');
+        setContent(tr('preview.loadError'));
       } finally {
         setLoading(false);
       }
@@ -76,7 +78,7 @@ function FilePreview({ filename, onClose }) {
               <div style={{
                 width: '32px', height: '32px', border: '3px solid rgba(74,158,255,0.1)', borderTop: '3px solid var(--accent-blue)', borderRadius: '50%', animation: 'spin 1s linear infinite', marginRight: '0.75rem',
               }}></div>
-              Caricamento...
+              {tr('common.loading')}
             </div>
           ) : (
             <>

@@ -45,7 +45,48 @@ def get_vector_store():
 
 
 def add_document_to_store(doc_id: str, content: str, metadata: Dict, batch_size: int = 32) -> List[str]:
-    """Aggiunge un documento al vector store (batched per evitare OOM su doc grandi)."""
+    """Aggiunge un documento al vector store (batched). Supporta page-aware per Citations 2.0."""
+    # Se metadata contiene 'pages' (lista {page, text}) → chunk per pagina preservando page number
+    pages = metadata.get("pages")
+    if pages and isinstance(pages, list) and len(pages) > 0:
+        # chunk per pagina separatamente per tenere page corretto su ogni chunk
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000, chunk_overlap=200, separators=["\n\n", "\n", ". ", " ", ""],
+        )
+        all_chunks = []
+        all_metas = []
+        for p in pages:
+            pg_num = p.get("page", 1)
+            pg_text = (p.get("text") or "").strip()
+            if not pg_text:
+                continue
+            chunks = splitter.split_text(pg_text)
+            for idx, ch in enumerate(chunks):
+                all_chunks.append(ch)
+                all_metas.append({
+                    "doc_id": doc_id,
+                    "chunk_index": len(all_metas),
+                    "filename": metadata.get("filename", ""),
+                    "extension": metadata.get("extension", ""),
+                    "page": pg_num,
+                    "page_source": p.get("source", "text"),
+                })
+        if not all_chunks:
+            # fallback a content globale
+            pages = None
+        else:
+            vector_store = get_vector_store()
+            all_ids: List[str] = []
+            for start in range(0, len(all_chunks), batch_size):
+                batch_chunks = all_chunks[start:start + batch_size]
+                batch_meta = all_metas[start:start + batch_size]
+                batch_ids = [f"{doc_id}_chunk_{meta['chunk_index']}" for meta in batch_meta]
+                ids = vector_store.add_texts(texts=batch_chunks, metadatas=batch_meta, ids=batch_ids)
+                all_ids.extend(ids)
+            _invalidate_collection_cache()
+            return all_ids
+
+    # Percorso classico (senza pages)
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,
@@ -67,6 +108,7 @@ def add_document_to_store(doc_id: str, content: str, metadata: Dict, batch_size:
                 "chunk_index": start + i,
                 "filename": metadata.get("filename", ""),
                 "extension": metadata.get("extension", ""),
+                "page": metadata.get("page", 1),
             }
             for i in range(len(batch_chunks))
         ]

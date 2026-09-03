@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { documentsApi } from '../utils/api';
-import { useI18n } from '../utils/i18n';
+import { useI18n, t } from '../utils/i18n';
 
 const API = 'http://127.0.0.1:8000';
 
 // Minimal SVG Bar/Line chart senza dipendenze esterne
 function BarChart({ data, color = 'var(--accent-blue)' }) {
-  if (!data || data.length === 0) return <div style={{ textAlign:'center', color:'var(--text-secondary)', padding:'2rem' }}>Nessun dato</div>;
+  const { lang } = useI18n(); const tr = p => t(lang,p);
+  if (!data || data.length === 0) return <div style={{ textAlign:'center', color:'var(--text-secondary)', padding:'2rem' }}>{tr('analytics.noData')}</div>;
   const max = Math.max(...data.map(d => d.value), 1);
   const w = 700, h = 320, pad = 40, barGap = 8;
   const barW = (w - pad*2 - barGap*(data.length-1)) / data.length;
@@ -60,7 +61,8 @@ function LineChart({ data, color = 'var(--accent-purple)' }) {
 }
 
 function PieChart({ data }) {
-  if (!data || data.length===0) return <div style={{textAlign:'center', color:'var(--text-secondary)', padding:'2rem'}}>Nessun dato</div>;
+  const { lang: _langPie } = useI18n(); const _trPie = p => t(_langPie,p);
+  if (!data || data.length===0) return <div style={{textAlign:'center', color:'var(--text-secondary)', padding:'2rem'}}>{_trPie('analytics.noData')}</div>;
   const total = data.reduce((s,d)=>s+d.value,0) || 1;
   const colors = ['#4a9eff','#a855f7','#ec4899','#7ee787','#ffa657','#38bdf8','#f87171','#34d399'];
   let acc=0;
@@ -79,7 +81,7 @@ function PieChart({ data }) {
         })}
         <circle cx={cx} cy={cy} r="58" fill="rgba(15,15,25,0.95)" />
         <text x={cx} y={cy-6} textAnchor="middle" fontSize="13" fontWeight="700" fill="var(--text-primary)">{total.toLocaleString('it-IT')}€</text>
-        <text x={cx} y={cy+10} textAnchor="middle" fontSize="9" fill="var(--text-secondary)">Totale</text>
+        <text x={cx} y={cy+10} textAnchor="middle" fontSize="9" fill="var(--text-secondary)">{_trPie('analytics.total')}</text>
       </svg>
       <div style={{ display:'flex', flexDirection:'column', gap:'0.4rem' }}>
         {data.map((d,i)=>(
@@ -95,7 +97,7 @@ function PieChart({ data }) {
 }
 
 export default function Analytics({ showToast }) {
-  const { lang } = useI18n();
+  const { lang } = useI18n(); const tr = p => t(lang,p);
   const [docs, setDocs] = useState([]);
   const [selected, setSelected] = useState(new Set());
   const [preset, setPreset] = useState('fatture');
@@ -126,7 +128,7 @@ export default function Analytics({ showToast }) {
   },[preset]);
 
   const handleGenerate = async () => {
-    if(selected.size===0){ showToast?.('Seleziona almeno un documento','warning'); return; }
+    if(selected.size===0){ showToast?.(tr('analytics.selectOne'),'warning'); return; }
     setLoading(true); setResult(null);
     try {
       const payload = {
@@ -148,36 +150,34 @@ export default function Analytics({ showToast }) {
       const weak = data.chart_data.length===1 && data.chart_data[0]?.label==='Senza data';
       const zeroTotal = (data.total||0)===0;
       if(weak || zeroTotal){
-        showToast?.(weak ? 'Dati estratti ma senza data — prova altro preset o seleziona fatture con data/€ chiari' : 'Grafico pronto ma totale 0 — verifica importi nei documenti','warning');
+        showToast?.(weak ? tr('analytics.warnNoDate') : tr('analytics.warnZeroTotal'),'warning');
       } else {
-        showToast?.(`Grafico pronto: ${data.count} righe → ${data.chart_data.length} gruppi • Totale ${data.total?.toLocaleString('it-IT')}€`,'success');
+        showToast?.(`${tr('analytics.chartReady')}: ${data.count} righe → ${data.chart_data.length} gruppi • ${tr('analytics.total')} ${data.total?.toLocaleString('it-IT')}€`,'success');
       }
     } catch(e){
-      showToast?.('Errore: '+e.message,'error');
+      showToast?.(tr('common.error')+': '+e.message,'error');
     } finally { setLoading(false);}
   };
-
-  const t = (it,en,de) => lang==='de'?de : lang==='en'?en : it;
 
   return (
     <div className="glass-card" style={{ padding:'1.5rem', display:'flex', flexDirection:'column', gap:'1.25rem' }}>
       <div>
         <h2 style={{ fontFamily:'var(--font-display)', fontSize:'1.35rem', fontWeight:700, color:'var(--text-primary)', display:'flex', alignItems:'center', gap:'0.5rem' }}>
           <span style={{ background:'var(--accent-gradient)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>📊</span>
-          {t('Grafici da Documenti','Charts from Documents','Diagramme aus Dokumenten')}
+          {tr('analytics.title')}
         </h2>
         <p style={{ color:'var(--text-secondary)', fontSize:'0.85rem', marginTop:'0.3rem' }}>
-          {t('Seleziona fatture/spese e genera grafici configurabili.','Select invoices/expenses and generate configurable charts.','Wähle Rechnungen/Ausgaben und erstelle konfigurierbare Diagramme.')}
+          {tr('analytics.subtitle')}
         </p>
       </div>
 
       {/* Document selector */}
       <div style={{ background:'var(--bg-glass)', border:'1px solid var(--border-glass)', borderRadius:'14px', padding:'1rem 1.2rem' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'0.6rem' }}>
-          <span style={{ fontSize:'0.85rem', fontWeight:600, color:'var(--text-primary)' }}>{t('Documenti','Documents','Dokumente')} ({docs.length})</span>
+          <span style={{ fontSize:'0.85rem', fontWeight:600, color:'var(--text-primary)' }}>{tr('analytics.docs')} ({docs.length})</span>
           <div style={{ display:'flex', gap:'0.4rem' }}>
-            <button onClick={()=>setSelected(new Set(docs.map(d=>d.filename)))} style={{ fontSize:'0.75rem', background:'rgba(74,158,255,0.1)', color:'var(--accent-blue)', border:'1px solid rgba(74,158,255,0.2)', borderRadius:'8px', padding:'0.25rem 0.6rem', cursor:'pointer' }}>{t('Tutti','All','Alle')}</button>
-            <button onClick={()=>setSelected(new Set())} style={{ fontSize:'0.75rem', background:'var(--bg-glass)', color:'var(--text-secondary)', border:'1px solid var(--border-glass)', borderRadius:'8px', padding:'0.25rem 0.6rem', cursor:'pointer' }}>{t('Nessuno','None','Keine')}</button>
+            <button onClick={()=>setSelected(new Set(docs.map(d=>d.filename)))} style={{ fontSize:'0.75rem', background:'rgba(74,158,255,0.1)', color:'var(--accent-blue)', border:'1px solid rgba(74,158,255,0.2)', borderRadius:'8px', padding:'0.25rem 0.6rem', cursor:'pointer' }}>{tr('analytics.all')}</button>
+            <button onClick={()=>setSelected(new Set())} style={{ fontSize:'0.75rem', background:'var(--bg-glass)', color:'var(--text-secondary)', border:'1px solid var(--border-glass)', borderRadius:'8px', padding:'0.25rem 0.6rem', cursor:'pointer' }}>{tr('analytics.none')}</button>
           </div>
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:'0.3rem', maxHeight:'220px', overflowY:'auto', paddingRight:'0.3rem' }}>
@@ -189,13 +189,13 @@ export default function Analytics({ showToast }) {
             </label>
           ))}
         </div>
-        <div style={{ marginTop:'0.5rem', fontSize:'0.75rem', color:'var(--text-secondary)' }}>{selected.size} {t('selezionati','selected','ausgewählt')}</div>
+        <div style={{ marginTop:'0.5rem', fontSize:'0.75rem', color:'var(--text-secondary)' }}>{selected.size} {tr('analytics.selected')}</div>
       </div>
 
       {/* Config */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))', gap:'0.75rem' }}>
         <div>
-          <label style={{ fontSize:'0.75rem', color:'var(--text-secondary)', fontFamily:'var(--font-mono)' }}>Template</label>
+          <label style={{ fontSize:'0.75rem', color:'var(--text-secondary)', fontFamily:'var(--font-mono)' }}>{tr('analytics.template')}</label>
           <select value={preset} onChange={e=>setPreset(e.target.value)} style={{ width:'100%', marginTop:'0.25rem', background:'rgba(15,15,25,0.8)', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.55rem 0.7rem', color:'var(--text-primary)', fontSize:'0.85rem' }}>
             {Object.entries(presets).map(([k,v])=> <option key={k} value={k}>{v.label} — {v.fields.join(', ')}</option>)}
             <option value="fatture">Fatture — data, importo, fornitore, numero_fattura</option>
@@ -205,7 +205,7 @@ export default function Analytics({ showToast }) {
           </select>
         </div>
         <div>
-          <label style={{ fontSize:'0.75rem', color:'var(--text-secondary)', fontFamily:'var(--font-mono)' }}>Campo importo</label>
+          <label style={{ fontSize:'0.75rem', color:'var(--text-secondary)', fontFamily:'var(--font-mono)' }}>{tr('analytics.amountField')}</label>
           <select value={sumField} onChange={e=>setSumField(e.target.value)} style={{ width:'100%', marginTop:'0.25rem', background:'rgba(15,15,25,0.8)', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.55rem 0.7rem', color:'var(--text-primary)', fontSize:'0.85rem' }}>
             <option value="importo">importo</option>
             <option value="importo_netto">importo_netto</option>
@@ -214,35 +214,35 @@ export default function Analytics({ showToast }) {
           </select>
         </div>
         <div>
-          <label style={{ fontSize:'0.75rem', color:'var(--text-secondary)', fontFamily:'var(--font-mono)' }}>{t('Raggruppa per','Group by','Gruppieren nach')}</label>
+          <label style={{ fontSize:'0.75rem', color:'var(--text-secondary)', fontFamily:'var(--font-mono)' }}>{tr('analytics.groupBy')}</label>
           <select value={groupBy} onChange={e=>setGroupBy(e.target.value)} style={{ width:'100%', marginTop:'0.25rem', background:'rgba(15,15,25,0.8)', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.55rem 0.7rem', color:'var(--text-primary)', fontSize:'0.85rem' }}>
-            <option value="month">{t('Mese (YYYY-MM)','Month (YYYY-MM)','Monat (YYYY-MM)')}</option>
-            <option value="categoria">{t('Categoria','Category','Kategorie')}</option>
-            <option value="fornitore">{t('Fornitore','Vendor','Lieferant')}</option>
-            <option value="none">{t('Nessun raggruppamento','No grouping','Keine Gruppierung')}</option>
+            <option value="month">month (YYYY-MM)</option>
+            <option value="categoria">categoria</option>
+            <option value="fornitore">fornitore</option>
+            <option value="none">none</option>
           </select>
         </div>
         <div>
-          <label style={{ fontSize:'0.75rem', color:'var(--text-secondary)', fontFamily:'var(--font-mono)' }}>{t('Tipo grafico','Chart type','Diagrammtyp')}</label>
+          <label style={{ fontSize:'0.75rem', color:'var(--text-secondary)', fontFamily:'var(--font-mono)' }}>{tr('analytics.chartType')}</label>
           <select value={chartType} onChange={e=>setChartType(e.target.value)} style={{ width:'100%', marginTop:'0.25rem', background:'rgba(15,15,25,0.8)', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.55rem 0.7rem', color:'var(--text-primary)', fontSize:'0.85rem' }}>
-            <option value="bar">Barre</option>
-            <option value="line">Linee</option>
-            <option value="pie">Torta</option>
-            <option value="table">Tabella</option>
+            <option value="bar">{tr('analytics.bar')}</option>
+            <option value="line">{tr('analytics.line')}</option>
+            <option value="pie">{tr('analytics.pie')}</option>
+            <option value="table">{tr('analytics.table')}</option>
           </select>
         </div>
       </div>
 
       {preset==='custom' && (
         <div style={{ background:'var(--bg-glass)', border:'1px solid var(--border-glass)', borderRadius:'12px', padding:'0.9rem 1rem', display:'flex', flexDirection:'column', gap:'0.6rem' }}>
-          <input value={customFields} onChange={e=>setCustomFields(e.target.value)} placeholder="campi separati da virgola, es: data, importo, fornitore" style={{ background:'rgba(15,15,25,0.8)', border:'1px solid var(--border-glass)', borderRadius:'8px', padding:'0.5rem 0.7rem', color:'var(--text-primary)', fontSize:'0.85rem' }} />
-          <textarea value={customPrompt} onChange={e=>setCustomPrompt(e.target.value)} placeholder={t('Prompt LLM opzionale — lascia vuoto per auto','Optional LLM prompt — leave empty for auto','Optionaler LLM-Prompt — leer lassen für Auto')} rows={2} style={{ background:'rgba(15,15,25,0.8)', border:'1px solid var(--border-glass)', borderRadius:'8px', padding:'0.5rem 0.7rem', color:'var(--text-primary)', fontSize:'0.82rem', resize:'vertical' }} />
-          <span style={{ fontSize:'0.7rem', color:'var(--text-secondary)' }}>{t('Esempio: Estrai data, importo e descrizione in JSON.','Example: Extract date, amount and description as JSON.','Beispiel: Extrahiere Datum, Betrag und Beschreibung als JSON.')}</span>
+          <input value={customFields} onChange={e=>setCustomFields(e.target.value)} placeholder={tr('analytics.customFieldsPlaceholder')} style={{ background:'rgba(15,15,25,0.8)', border:'1px solid var(--border-glass)', borderRadius:'8px', padding:'0.5rem 0.7rem', color:'var(--text-primary)', fontSize:'0.85rem' }} />
+          <textarea value={customPrompt} onChange={e=>setCustomPrompt(e.target.value)} placeholder={tr('analytics.customPromptPlaceholder')} rows={2} style={{ background:'rgba(15,15,25,0.8)', border:'1px solid var(--border-glass)', borderRadius:'8px', padding:'0.5rem 0.7rem', color:'var(--text-primary)', fontSize:'0.82rem', resize:'vertical' }} />
+          <span style={{ fontSize:'0.7rem', color:'var(--text-secondary)' }}>{tr('analytics.customPromptPlaceholder')}</span>
         </div>
       )}
 
       <button onClick={handleGenerate} disabled={loading} style={{ padding:'0.85rem', background: loading?'rgba(74,158,255,0.1)':'var(--accent-gradient)', color: loading?'var(--text-secondary)':'white', border:'none', borderRadius:'12px', fontWeight:600, cursor: loading?'not-allowed':'pointer', opacity: loading?0.6:1 }}>
-        {loading ? '⏳ ' + t('Estrazione in corso…','Extracting…','Extrahiere…') : '📊 ' + t('Genera Grafico','Generate Chart','Diagramm erstellen')}
+        {loading ? '⏳ ' + tr('analytics.extracting') : '📊 ' + tr('analytics.generate')}
       </button>
 
       {/* Results */}
@@ -250,9 +250,9 @@ export default function Analytics({ showToast }) {
         <div style={{ animation:'fadeInUp 0.4s ease-out' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'0.75rem', flexWrap:'wrap', gap:'0.5rem' }}>
             <span style={{ fontFamily:'var(--font-mono)', fontSize:'0.8rem', color:'var(--text-secondary)' }}>
-              Totale: <strong style={{ color:'var(--text-primary)' }}>{result.total?.toLocaleString('it-IT')}€</strong> su {result.count} righe • {result.chart_data.length} gruppi ({result.group_by})
+              {tr('analytics.totalSummary')}: <strong style={{ color:'var(--text-primary)' }}>{result.total?.toLocaleString('it-IT')}€</strong> su {result.count} righe • {result.chart_data.length} gruppi ({result.group_by})
             </span>
-            <button onClick={()=>{ navigator.clipboard.writeText(JSON.stringify(result.chart_data,null,2)); showToast?.('Copiato JSON','success'); }} style={{ fontSize:'0.75rem', background:'var(--bg-glass)', border:'1px solid var(--border-glass)', color:'var(--text-secondary)', borderRadius:'8px', padding:'0.25rem 0.6rem', cursor:'pointer' }}>📋 JSON</button>
+            <button onClick={()=>{ navigator.clipboard.writeText(JSON.stringify(result.chart_data,null,2)); showToast?.('Copiato JSON','success'); }} style={{ fontSize:'0.75rem', background:'var(--bg-glass)', border:'1px solid var(--border-glass)', color:'var(--text-secondary)', borderRadius:'8px', padding:'0.25rem 0.6rem', cursor:'pointer' }}>{tr('analytics.json')}</button>
           </div>
 
           {chartType==='bar' && <BarChart data={result.chart_data} />}
@@ -269,7 +269,7 @@ export default function Analytics({ showToast }) {
 
           {/* raw rows preview */}
           <details style={{ marginTop:'0.75rem' }}>
-            <summary style={{ cursor:'pointer', color:'var(--text-secondary)', fontSize:'0.8rem', fontFamily:'var(--font-mono)' }}>Mostra righe estratte ({result.rows?.length})</summary>
+            <summary style={{ cursor:'pointer', color:'var(--text-secondary)', fontSize:'0.8rem', fontFamily:'var(--font-mono)' }}>{tr('analytics.showRows')} ({result.rows?.length})</summary>
             <pre style={{ marginTop:'0.5rem', background:'rgba(15,15,25,0.8)', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.8rem', fontSize:'0.75rem', color:'var(--text-secondary)', maxHeight:'200px', overflow:'auto', whiteSpace:'pre-wrap' }}>{JSON.stringify(result.rows.slice(0,10), null, 2)}</pre>
           </details>
         </div>

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { statusApi } from '../utils/api';
+import { useI18n, t } from '../utils/i18n';
 
 function Settings() {
+  const { lang } = useI18n(); const tr = p => t(lang,p);
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState('general');
@@ -22,14 +24,14 @@ function Settings() {
   };
 
   const sections = [
-    { id: 'general', icon: '⚙️', label: 'Generale' },
-    { id: 'models', icon: '🤖', label: 'Modelli' },
-    { id: 'documents', icon: '📁', label: 'Documenti' },
-    { id: 'about', icon: 'ℹ️', label: 'Info' },
+    { id: 'general', icon: '⚙️', label: tr('settings.tabGeneral') },
+    { id: 'models', icon: '🤖', label: tr('settings.tabModels') },
+    { id: 'documents', icon: '📁', label: tr('settings.tabDocs') },
+    { id: 'about', icon: 'ℹ️', label: tr('settings.tabInfo') },
   ];
 
   if (loading) {
-    return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>Caricamento...</div>;
+    return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>{tr('settings.loading')}</div>;
   }
 
   return (
@@ -75,14 +77,14 @@ function Settings() {
             <h2 style={{
               fontFamily: 'var(--font-display)', fontSize: '1.3rem', fontWeight: 600,
               color: 'var(--text-primary)', marginBottom: '1.25rem',
-            }}>Impostazioni</h2>
+            }}>{tr('settings.title')}</h2>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
               <div style={{ padding: '1rem 1.25rem', background: 'var(--bg-glass)', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
-                    <p style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: '0.9rem' }}>Connessione</p>
+                    <p style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: '0.9rem' }}>{tr('settings.connection')}</p>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.2rem' }}>
-                      {status?.ollama_connected ? '✅ Attiva' : '❌ Inattiva'}
+                      {status?.ollama_connected ? `✅ ${tr('settings.active')}` : `❌ ${tr('settings.inactive')}`}
                     </p>
                   </div>
                   <div style={{
@@ -95,8 +97,8 @@ function Settings() {
               <div style={{ padding: '1rem 1.25rem', background: 'var(--bg-glass)', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
-                    <p style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: '0.9rem' }}>Documenti</p>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.2rem' }}>{status?.total_documents || 0} indicizzati</p>
+                    <p style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: '0.9rem' }}>{tr('settings.docs')}</p>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.2rem' }}>{status?.total_documents || 0} {tr('settings.indexed')}</p>
                   </div>
                   <span style={{ fontSize: '1.6rem' }}>📚</span>
                 </div>
@@ -104,8 +106,8 @@ function Settings() {
               <div style={{ padding: '1rem 1.25rem', background: 'var(--bg-glass)', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
-                    <p style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: '0.9rem' }}>Chunk</p>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.2rem' }}>{status?.total_chunks || 0} segmenti</p>
+                    <p style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: '0.9rem' }}>{tr('settings.chunks')}</p>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.2rem' }}>{status?.total_chunks || 0} {tr('settings.segments')}</p>
                   </div>
                   <span style={{ fontSize: '1.6rem' }}>🧩</span>
                 </div>
@@ -113,8 +115,8 @@ function Settings() {
               <div style={{ padding: '1rem 1.25rem', background: 'var(--bg-glass)', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
-                    <p style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: '0.9rem' }}>Modello</p>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.2rem' }}>{status?.current_model || 'N/A'}</p>
+                    <p style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: '0.9rem' }}>{tr('settings.model')}</p>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.2rem' }}>{status?.current_model || tr('settings.na')}</p>
                   </div>
                   <span style={{ fontSize: '1.6rem' }}>🤖</span>
                 </div>
@@ -128,7 +130,7 @@ function Settings() {
             <h2 style={{
               fontFamily: 'var(--font-display)', fontSize: '1.3rem', fontWeight: 600,
               color: 'var(--text-primary)', marginBottom: '1.25rem',
-            }}>Modelli AI</h2>
+            }}>{tr('settings.aiModels')}</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <div style={{
                 padding: '1rem 1.25rem', background: 'linear-gradient(135deg, rgba(74,158,255,0.1) 0%, rgba(168,85,247,0.1) 100%)',
@@ -137,9 +139,9 @@ function Settings() {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
                     <p style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{status?.current_model}</p>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.2rem' }}>Modello attivo</p>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.2rem' }}>{tr('settings.activeModel')}</p>
                   </div>
-                  <span style={{ fontSize: '0.7rem', background: 'rgba(126,231,135,0.1)', color: 'var(--accent-green)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>Attivo</span>
+                  <span style={{ fontSize: '0.7rem', background: 'rgba(126,231,135,0.1)', color: 'var(--accent-green)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>{tr('settings.active')}</span>
                 </div>
               </div>
               {status?.available_models?.map((model, idx) => (
@@ -159,17 +161,17 @@ function Settings() {
             <h2 style={{
               fontFamily: 'var(--font-display)', fontSize: '1.3rem', fontWeight: 600,
               color: 'var(--text-primary)', marginBottom: '1.25rem',
-            }}>Documenti</h2>
+            }}>{tr('settings.docs')}</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <div style={{ padding: '1rem 1.25rem', background: 'var(--bg-glass)', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
-                <p style={{ color: 'var(--text-primary)', fontWeight: 500, marginBottom: '0.5rem' }}>📁 Cartella Documenti</p>
+                <p style={{ color: 'var(--text-primary)', fontWeight: 500, marginBottom: '0.5rem' }}>📁 {tr('settings.docFolder')}</p>
                 <code style={{ fontSize: '0.8rem', color: 'var(--accent-blue)', background: 'rgba(15,15,25,0.8)', padding: '0.5rem 0.75rem', borderRadius: '8px', display: 'block', fontFamily: 'var(--font-mono)' }}>
-                  backend/data/documents/
+                  {tr('settings.docFolderPath')}
                 </code>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.5rem' }}>Inserisci i file direttamente in questa cartella, poi usa "Scansiona Cartella".</p>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.5rem' }}>{tr('settings.docFolderHint')}</p>
               </div>
               <div style={{ padding: '1rem 1.25rem', background: 'var(--bg-glass)', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
-                <p style={{ color: 'var(--text-primary)', fontWeight: 500, marginBottom: '0.5rem' }}>📋 Formati Supportati</p>
+                <p style={{ color: 'var(--text-primary)', fontWeight: 500, marginBottom: '0.5rem' }}>📋 {tr('settings.supportedFormats')}</p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                   {['PDF', 'DOCX', 'XLSX', 'TXT', 'CSV', 'PNG', 'JPG'].map(fmt => (
                     <span key={fmt} style={{
@@ -188,7 +190,7 @@ function Settings() {
             <h2 style={{
               fontFamily: 'var(--font-display)', fontSize: '1.3rem', fontWeight: 600,
               color: 'var(--text-primary)', marginBottom: '1.25rem',
-            }}>Informazioni</h2>
+            }}>{tr('settings.aboutTitle')}</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <div style={{
                 padding: '1.5rem', background: 'linear-gradient(135deg, rgba(74,158,255,0.08) 0%, rgba(168,85,247,0.08) 50%, rgba(236,72,153,0.08) 100%)',
@@ -198,15 +200,15 @@ function Settings() {
                 <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 700,
                   background: 'var(--accent-gradient)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
                   marginBottom: '0.5rem',
-                }}>LLM Wiki</h3>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Versione 1.0.0</p>
+                }}>{tr('settings.aboutApp')}</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{tr('settings.version')}</p>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.5rem' }}>
-                  Wiki intelligente con RAG, Chat AI e trascrizione vocale
+                  {tr('settings.aboutDesc')}
                 </p>
               </div>
               <div style={{ padding: '1rem 1.25rem', background: 'var(--bg-glass)', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', lineHeight: 1.6 }}>
-                  🟢 IONOS AI + 🔵 Ollama + ⚫ ChromaDB
+                  {tr('settings.stack')}
                 </p>
               </div>
             </div>

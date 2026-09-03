@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { statusApi, documentsApi } from '../utils/api';
+import { useI18n, t } from '../utils/i18n';
 
 function Dashboard({ onNavigate }) {
+  const { lang } = useI18n();
+  const tr = (p) => t(lang, p);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [documents, setDocuments] = useState([]);
@@ -67,11 +70,11 @@ function Dashboard({ onNavigate }) {
       setInsights(res.data.insights || '');
     } catch (e) {
       console.error('Insights error:', e);
-      setInsightsError('Impossibile generare insights. Riprova piu tardi.');
+      setInsightsError(tr('dashboard.insightsError'));
     } finally {
       setInsightsLoading(false);
     }
-  }, []);
+  }, [tr]);
 
   const totalSize = useMemo(() =>
     stats?.total_size_bytes != null
@@ -121,10 +124,10 @@ function Dashboard({ onNavigate }) {
         gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
         gap: '1rem',
       }}>
-        <StatCard icon="📚" label="Documenti" value={stats?.total_documents || 0} color="blue" />
-        <StatCard icon="🧩" label="Chunk Indicizzati" value={stats?.total_chunks || 0} color="purple" />
-        <StatCard icon="💾" label="Dimensione Totale" value={formatSize(totalSize)} color="green" />
-        <StatCard icon="📝" label="Parole Stimate" value={stats?.total_words?.toLocaleString() || '0'} color="pink" />
+        <StatCard icon="📚" label={tr('dashboard.docs')} value={stats?.total_documents || 0} color="blue" />
+        <StatCard icon="🧩" label={tr('dashboard.chunks')} value={stats?.total_chunks || 0} color="purple" />
+        <StatCard icon="💾" label={tr('dashboard.size')} value={formatSize(totalSize)} color="green" />
+        <StatCard icon="📝" label={tr('dashboard.words')} value={stats?.total_words?.toLocaleString() || '0'} color="pink" />
       </div>
 
       {/* Charts Row */}
@@ -141,7 +144,7 @@ function Dashboard({ onNavigate }) {
             alignItems: 'center',
             gap: '0.5rem',
           }}>
-            <span style={{ fontSize: '1.1rem' }}>📊</span> Tipi di Documenti
+            <span style={{ fontSize: '1.1rem' }}>📊</span> {tr('dashboard.types')}
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {docTypes.map(([ext, count], idx) => {
@@ -187,7 +190,7 @@ function Dashboard({ onNavigate }) {
             alignItems: 'center',
             gap: '0.5rem',
           }}>
-            <span style={{ fontSize: '1.1rem' }}>✨</span> AI Insights
+            <span style={{ fontSize: '1.1rem' }}>✨</span> {tr('dashboard.aiInsights')}
           </h3>
           {insightsLoading ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '150px', gap: '0.75rem' }}>
@@ -199,7 +202,7 @@ function Dashboard({ onNavigate }) {
                 borderRadius: '50%',
                 animation: 'spin 1s linear infinite',
               }} />
-              <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Analisi in corso...</span>
+              <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>{tr('dashboard.analyzing')}</span>
             </div>
           ) : insightsError ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '150px', gap: '0.5rem' }}>
@@ -216,7 +219,7 @@ function Dashboard({ onNavigate }) {
                   fontSize: '0.8rem',
                   cursor: 'pointer',
                 }}
-              >Riprova</button>
+              >{tr('dashboard.retry')}</button>
             </div>
           ) : insights ? (
             <div className="prose" style={{ fontSize: '0.85rem', lineHeight: 1.6 }}>
@@ -226,7 +229,7 @@ function Dashboard({ onNavigate }) {
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '150px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>
-              Nessun insight disponibile
+              {tr('dashboard.noInsights')}
             </div>
           )}
         </div>
@@ -244,12 +247,12 @@ function Dashboard({ onNavigate }) {
           alignItems: 'center',
           gap: '0.5rem',
         }}>
-          <span style={{ fontSize: '1.1rem' }}>📄</span> Documenti Recenti
+          <span style={{ fontSize: '1.1rem' }}>📄</span> {tr('dashboard.recentDocs')}
         </h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.75rem' }}>
           {documents.length === 0 ? (
             <p style={{ color: 'var(--text-secondary)', gridColumn: '1 / -1', textAlign: 'center', padding: '2rem' }}>
-              Nessun documento
+              {tr('dashboard.noDocs')}
             </p>
           ) : (
             documents.slice(0, 8).map((doc, idx) => (
@@ -317,13 +320,13 @@ function Dashboard({ onNavigate }) {
           color: 'var(--text-primary)',
           marginBottom: '1.25rem',
         }}>
-          Azioni Rapide
+          {tr('dashboard.quickActions')}
         </h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem' }}>
-          <QuickAction icon="📤" label="Carica File" tab="upload" onNavigate={onNavigate} />
-          <QuickAction icon="💬" label="Nuova Chat" tab="chat" onNavigate={onNavigate} />
-          <QuickAction icon="🔄" label="Scansiona" tab="documents" onNavigate={onNavigate} />
-          <QuickAction icon="⚙️" label="Impostazioni" tab="settings" onNavigate={onNavigate} />
+          <QuickAction icon="📤" label={tr('dashboard.upload')} tab="upload" onNavigate={onNavigate} />
+          <QuickAction icon="💬" label={tr('dashboard.newChat')} tab="chat" onNavigate={onNavigate} />
+          <QuickAction icon="🔄" label={tr('dashboard.scan')} tab="documents" onNavigate={onNavigate} />
+          <QuickAction icon="⚙️" label={tr('dashboard.settings')} tab="settings" onNavigate={onNavigate} />
         </div>
       </div>
 
@@ -340,7 +343,7 @@ function Dashboard({ onNavigate }) {
             alignItems: 'center',
             gap: '0.5rem',
           }}>
-            <span style={{ fontSize: '1.1rem' }}>🕐</span> Attività Recenti
+            <span style={{ fontSize: '1.1rem' }}>🕐</span> {tr('dashboard.activity')}
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {activity.slice(0, 8).map((item, idx) => (
@@ -387,7 +390,7 @@ function Dashboard({ onNavigate }) {
                   fontFamily: 'var(--font-mono)',
                   flexShrink: 0,
                 }}>
-                  {item.created_at ? new Date(item.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : ''}
+                  {item.created_at ? new Date(item.created_at).toLocaleTimeString(lang === 'en' ? 'en-US' : lang === 'de' ? 'de-DE' : 'it-IT', { hour: '2-digit', minute: '2-digit' }) : ''}
                 </span>
               </div>
             ))}

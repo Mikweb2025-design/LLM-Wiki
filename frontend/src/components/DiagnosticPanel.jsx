@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { healthApi } from '../utils/api';
+import { useI18n, t } from '../utils/i18n';
 
 /**
  * Pannello diagnostica:
@@ -9,6 +10,7 @@ import { healthApi } from '../utils/api';
  * - Auto-refresh ogni 15s
  */
 export default function DiagnosticPanel() {
+  const { lang } = useI18n(); const tr = p => t(lang,p);
   const [data, setData] = useState(null);
   const [metrics, setMetrics] = useState(null);
   const [open, setOpen] = useState(false);
@@ -69,9 +71,9 @@ export default function DiagnosticPanel() {
   })();
 
   const palette = {
-    online:   { dot: 'var(--accent-blue)',   bg: 'rgba(74, 158, 255, 0.08)', bd: 'rgba(74, 158, 255, 0.2)',  fg: 'var(--accent-blue)',   label: 'Online' },
-    degraded: { dot: '#facc15',              bg: 'rgba(250, 204, 21, 0.08)', bd: 'rgba(250, 204, 21, 0.3)',  fg: '#facc15',              label: 'Degraded' },
-    offline:  { dot: 'var(--accent-orange)', bg: 'rgba(255, 166, 87, 0.08)', bd: 'rgba(255, 166, 87, 0.2)',  fg: 'var(--accent-orange)', label: 'Offline' },
+    online:   { dot: 'var(--accent-blue)',   bg: 'rgba(74, 158, 255, 0.08)', bd: 'rgba(74, 158, 255, 0.2)',  fg: 'var(--accent-blue)',   label: tr('diagnostic.online') },
+    degraded: { dot: '#facc15',              bg: 'rgba(250, 204, 21, 0.08)', bd: 'rgba(250, 204, 21, 0.3)',  fg: '#facc15',              label: tr('diagnostic.degraded') },
+    offline:  { dot: 'var(--accent-orange)', bg: 'rgba(255, 166, 87, 0.08)', bd: 'rgba(255, 166, 87, 0.2)',  fg: 'var(--accent-orange)', label: tr('diagnostic.offline') },
   }[overallStatus];
 
   const fmtUptime = (s) => {
@@ -85,10 +87,10 @@ export default function DiagnosticPanel() {
 
   const c = data?.components || {};
   const indicators = [
-    { key: 'ollama',   label: 'Ollama',   ok: c.ollama?.ok,   sub: 'LLM locale' },
-    { key: 'ionos',    label: 'IONOS',    ok: c.ionos?.ok,    sub: c.ionos?.configured ? 'Cloud LLM' : 'non configurato', dim: !c.ionos?.configured },
-    { key: 'chroma',   label: 'ChromaDB', ok: c.chroma?.ok,   sub: c.chroma?.total_chunks != null ? `${c.chroma.total_chunks} chunks` : 'vector store' },
-    { key: 'database', label: 'Database', ok: c.database?.ok, sub: c.database?.total_documents != null ? `${c.database.total_documents} docs` : 'SQLite' },
+    { key: 'ollama',   label: 'Ollama',   ok: c.ollama?.ok,   sub: tr('diagnostic.ollamaSub') },
+    { key: 'ionos',    label: 'IONOS',    ok: c.ionos?.ok,    sub: c.ionos?.configured ? tr('diagnostic.cloudSub') : tr('diagnostic.notConfigured'), dim: !c.ionos?.configured },
+    { key: 'chroma',   label: 'ChromaDB', ok: c.chroma?.ok,   sub: c.chroma?.total_chunks != null ? `${c.chroma.total_chunks} ${tr('diagnostic.chunks')}` : tr('diagnostic.vectorStore') },
+    { key: 'database', label: 'Database', ok: c.database?.ok, sub: c.database?.total_documents != null ? `${c.database.total_documents} ${tr('diagnostic.docs')}` : tr('diagnostic.sqlite') },
   ];
 
   return (
@@ -96,7 +98,7 @@ export default function DiagnosticPanel() {
       <button
         ref={btnRef}
         onClick={() => setOpen((v) => !v)}
-        title="Mostra diagnostica componenti"
+        title={tr('diagnostic.showTitle')}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -149,7 +151,7 @@ export default function DiagnosticPanel() {
             marginBottom: '0.7rem',
           }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 600, letterSpacing: '0.02em' }}>
-              System diagnostics
+              {tr('diagnostic.title')}
             </span>
             <button
               onClick={handleRefresh}
@@ -164,9 +166,9 @@ export default function DiagnosticPanel() {
                 cursor: loading ? 'wait' : 'pointer',
                 opacity: loading ? 0.6 : 1,
               }}
-              title="Forza re-check (POST /api/status/refresh)"
+              title={tr('diagnostic.forceRefresh')}
             >
-              {loading ? '…' : '↻ refresh'}
+              {loading ? '…' : `↻ ${tr('diagnostic.refresh')}`}
             </button>
           </div>
 
@@ -185,8 +187,8 @@ export default function DiagnosticPanel() {
             fontSize: '0.7rem',
             color: 'var(--text-secondary, #aab0bf)',
           }}>
-            <span>uptime <strong style={{ color: 'var(--text-primary, #e7e9ee)' }}>{fmtUptime(data?.uptime_seconds ?? metrics?.uptime_seconds)}</strong></span>
-            <span>req <strong style={{ color: 'var(--text-primary, #e7e9ee)' }}>{metrics?.request_count ?? '—'}</strong></span>
+            <span>{tr('diagnostic.uptime')} <strong style={{ color: 'var(--text-primary, #e7e9ee)' }}>{fmtUptime(data?.uptime_seconds ?? metrics?.uptime_seconds)}</strong></span>
+            <span>{tr('diagnostic.requests')} <strong style={{ color: 'var(--text-primary, #e7e9ee)' }}>{metrics?.request_count ?? '—'}</strong></span>
           </div>
         </div>
       )}
@@ -195,6 +197,7 @@ export default function DiagnosticPanel() {
 }
 
 function Row({ ind }) {
+  const { lang: _langRow } = useI18n(); const _trRow = p => t(_langRow,p);
   const ok = ind.ok === true;
   const unknown = ind.ok === null || ind.ok === undefined;
   const color = unknown ? '#6b7280' : (ok ? '#34d399' : '#f87171');
@@ -227,7 +230,7 @@ function Row({ ind }) {
         color,
         fontWeight: 600,
       }}>
-        {unknown ? 'n/a' : (ok ? 'ok' : 'down')}
+        {unknown ? _trRow('diagnostic.na') : (ok ? _trRow('diagnostic.ok') : _trRow('diagnostic.down'))}
       </span>
     </div>
   );

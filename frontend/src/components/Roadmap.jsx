@@ -13,19 +13,30 @@ export default function Roadmap() {
         {
           title: tr('roadmap.nextcloudTitle'),
           desc: tr('roadmap.nextcloudDesc'),
-          status: tr('roadmap.statusPlanned'),
+          status: tr('roadmap.statusDone'),
           badge: 'WebDAV',
           details: lang === 'de'
-            ? ['Login mit Nextcloud-Benutzer/Passwort (App-Passwort)', 'Ordnerauswahl: welchen Nextcloud-Ordner indexieren', 'Auto-Sync via WebDAV PROPFIND + ETag', 'OAuth2 / Token später', 'Filter nach Dateityp (PDF, Office)']
+            ? ['Login Nextcloud App-Passwort (PROPFIND Depth:1)', 'Folder-Picker mit Breadcrumb + ETag inkrementell', 'Cache data/webdav_cache/<id>/, Auto-Delete aus Index', 'Badge ☁️ Nextcloud vs 💾 Lokal in Dokumenten']
             : lang === 'en'
-            ? ['Nextcloud user/password (app password) login', 'Folder picker: which Nextcloud folder to index', 'Auto-sync via WebDAV PROPFIND + ETag', 'OAuth2 / Token later', 'Filter by file type (PDF, Office)']
-            : ['Login Nextcloud utente/password (app password)', 'Selezione cartella: quale cartella Nextcloud indicizzare', 'Auto-sync via WebDAV PROPFIND + ETag', 'OAuth2 / Token in seguito', 'Filtro per tipo file (PDF, Office)'],
+            ? ['Nextcloud App-password login (PROPFIND Depth:1)', 'Folder picker with breadcrumb + incremental ETag', 'Cache data/webdav_cache/<id>/, auto-delete from index', 'Badge ☁️ Nextcloud vs 💾 Local in Documents']
+            : ['Login Nextcloud app-password (PROPFIND Depth:1)', 'Folder picker con breadcrumb + ETag incrementale', 'Cache data/webdav_cache/<id>/, auto-rimozione da indice', 'Badge ☁️ Nextcloud vs 💾 Locale in Documenti'],
         },
         {
-          title: lang === 'de' ? 'Mehrsprachigkeit' : lang === 'en' ? 'Multi-language' : 'Multi-lingua',
-          desc: lang === 'de' ? 'Flaggen-Umschalter oben rechts (IT/EN/DE).' : lang === 'en' ? 'Flag switcher top-right (IT/EN/DE).' : 'Selettore bandiere in alto a destra (IT/EN/DE).',
+          title: lang === 'de' ? 'Vollständige Übersetzung' : lang === 'en' ? 'Full Translation' : 'Traduzione Completa',
+          desc: lang === 'de' ? 'Alle Menüpunkte + Inhalte IT/EN/DE (250+ Keys, 14 Komponenten, locale-aware).' : lang === 'en' ? 'All menu items + content IT/EN/DE (250+ keys, 14 components, locale-aware).' : 'Tutte le voci menu + contenuti IT/EN/DE (250+ chiavi, 14 componenti, locale-aware).',
           status: tr('roadmap.statusDone'),
           badge: 'i18n',
+          details: lang === 'de'
+            ? ['Dashboard, Chat, Dokumente, Ordner/WebDAV, Suche, Diagramme, Vergleich, Export, Status, Einstellungen', 'Flaggen-Switch oben rechts, 137 kB gz Build']
+            : lang === 'en'
+            ? ['Dashboard, Chat, Documents, Folders/WebDAV, Search, Charts, Compare, Export, Status, Settings', 'Flag switch top-right, 137 kB gz build']
+            : ['Dashboard, Chat, Documenti, Cartelle/WebDAV, Ricerca, Grafici, Confronta, Esporta, Stato, Config', 'Flag switch in alto a destra, build 137 kB gz'],
+        },
+        {
+          title: 'Grafici Intelligenti da Chat',
+          desc: lang === 'de' ? '„Zeig ein Diagramm meiner Einnahmen“ → Auto-Chart im Chat.' : lang === 'en' ? '"Show me a chart of my earnings" → auto-chart in chat.' : '"Fammi un grafico dei miei guadagni" → auto-chart in chat.',
+          status: tr('roadmap.statusDone'),
+          badge: 'Charts',
           details: [],
         },
       ],
@@ -35,24 +46,39 @@ export default function Roadmap() {
       color: 'var(--accent-blue)',
       items: [
         {
-          title: 'OCR Cloud + Local Hybrid',
-          desc: lang === 'de' ? 'Tesseract lokal + IONOS Vision für gescannte PDFs.' : lang === 'en' ? 'Tesseract local + IONOS Vision for scanned PDFs.' : 'Tesseract locale + IONOS Vision per PDF scansionati.',
-          status: tr('roadmap.statusPlanned'),
+          title: 'OCR Hybrid',
+          desc: lang === 'de' ? 'Tesseract lokal + IONOS Vision Fallback für Scans.' : lang === 'en' ? 'Tesseract local + IONOS Vision fallback for scans.' : 'Tesseract locale + IONOS Vision fallback per scansioni.',
+          status: 'Backend done',
           badge: 'OCR',
-          details: [],
+          details: lang === 'de'
+            ? ['pypdf Text → Tesseract je Seite → <50 Zeichen → IONOS Vision (Llama-3.2-11B-Vision)', 'Config IONOS_VISION_MODEL, OCR_HYBRID_ENABLED']
+            : lang === 'en'
+            ? ['pypdf text → Tesseract per page → <50 chars → IONOS Vision (Llama-3.2-11B-Vision)', 'Config IONOS_VISION_MODEL, OCR_HYBRID_ENABLED']
+            : ['pypdf text → Tesseract per pagina → <50 chars → IONOS Vision (Llama-3.2-11B-Vision)', 'Config IONOS_VISION_MODEL, OCR_HYBRID_ENABLED'],
         },
         {
           title: 'Chat Citations 2.0',
-          desc: lang === 'de' ? 'Quellen mit Seitenzahl + Highlight im Viewer.' : lang === 'en' ? 'Sources with page number + highlight in viewer.' : 'Fonti con numero pagina + highlight nel viewer.',
-          status: tr('roadmap.statusPlanned'),
+          desc: lang === 'de' ? 'Quellen „file.pdf S.3“ + Highlight im Viewer.' : lang === 'en' ? 'Sources "file.pdf p.3" + highlight in viewer.' : 'Fonti "file.pdf p.3" + highlight nel viewer.',
+          status: 'Backend done',
           badge: 'RAG',
-          details: [],
+          details: lang === 'de'
+            ? ['Page-aware Chunks (metadata.page), LLM zitiert p.N, Sources mit page+highlight']
+            : lang === 'en'
+            ? ['Page-aware chunks (metadata.page), LLM cites p.N, sources with page+highlight']
+            : ['Chunk page-aware (metadata.page), LLM cita p.N, fonti con page+highlight'],
         },
         {
           title: lang === 'de' ? 'Benutzer & Rollen' : lang === 'en' ? 'Users & Roles' : 'Utenti & Ruoli',
           desc: 'Nextcloud SSO → ruoli (viewer/editor/admin).',
           status: tr('roadmap.statusPlanned'),
           badge: 'Auth',
+          details: [],
+        },
+        {
+          title: lang === 'de' ? 'PDF Export' : lang === 'en' ? 'PDF Export' : 'Export PDF',
+          desc: lang === 'de' ? 'Chat Q&A + Quellen + Chart als PDF (reportlab).' : lang === 'en' ? 'Chat Q&A + sources + chart as PDF (reportlab).' : 'Q&A chat + fonti + grafico come PDF (reportlab).',
+          status: tr('roadmap.statusPlanned'),
+          badge: 'Export',
           details: [],
         },
       ],
@@ -63,7 +89,7 @@ export default function Roadmap() {
       items: [
         {
           title: 'WebDAV Generic (ownCloud, Seafile)',
-          desc: lang === 'de' ? 'Jeder WebDAV-Server als Quelle.' : lang === 'en' ? 'Any WebDAV server as source.' : 'Qualsiasi server WebDAV come sorgente.',
+          desc: lang === 'de' ? 'Jeder WebDAV-Server als Quelle (bereits via httpx+lxml).' : lang === 'en' ? 'Any WebDAV server as source (already via httpx+lxml).' : 'Qualsiasi server WebDAV come sorgente (già via httpx+lxml).',
           status: tr('roadmap.statusPlanned'),
           badge: 'WebDAV',
           details: [],
@@ -73,6 +99,13 @@ export default function Roadmap() {
           desc: lang === 'de' ? 'Embeddings + LLM vollständig lokal (Ollama).' : lang === 'en' ? 'Fully local embeddings + LLM (Ollama).' : 'Embeddings + LLM completamente locali (Ollama).',
           status: tr('roadmap.statusPlanned'),
           badge: 'Local',
+          details: [],
+        },
+        {
+          title: 'Watch Mode',
+          desc: lang === 'de' ? 'watchdog für lokale Ordner + WebDAV Poll (sync_interval_minutes).' : lang === 'en' ? 'watchdog for local folders + WebDAV poll (sync_interval_minutes).' : 'watchdog per cartelle locali + WebDAV poll (sync_interval_minutes).',
+          status: tr('roadmap.statusPlanned'),
+          badge: 'Watch',
           details: [],
         },
       ],

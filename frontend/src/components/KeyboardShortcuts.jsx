@@ -1,15 +1,17 @@
 import React, { useEffect } from 'react';
+import { useI18n, t } from '../utils/i18n';
 
 function KeyboardShortcuts({ isOpen, onClose }) {
+  const { lang } = useI18n(); const tr = p => t(lang,p);
   const shortcuts = [
-    { key: 'Ctrl + Enter', description: 'Invia messaggio chat' },
-    { key: 'Escape', description: 'Chiudi modale' },
-    { key: 'Ctrl + K', description: 'Focus ricerca' },
-    { key: 'Ctrl + N', description: 'Nuova chat' },
-    { key: 'Ctrl + D', description: 'Vai a Dashboard' },
-    { key: 'Ctrl + U', description: 'Carica documento' },
-    { key: 'Ctrl + ,', description: 'Apri impostazioni' },
-    { key: '?', description: 'Mostra questa guida' },
+    { key: 'Ctrl + Enter', description: tr('shortcuts.sendMessage') },
+    { key: 'Escape', description: tr('shortcuts.close') },
+    { key: 'Ctrl + K', description: tr('shortcuts.search') },
+    { key: 'Ctrl + N', description: tr('shortcuts.newChat') },
+    { key: 'Ctrl + D', description: tr('shortcuts.dashboard') },
+    { key: 'Ctrl + U', description: tr('shortcuts.upload') },
+    { key: 'Ctrl + ,', description: tr('shortcuts.settings') },
+    { key: '?', description: tr('shortcuts.help') },
   ];
 
   useEffect(() => {
@@ -44,9 +46,9 @@ function KeyboardShortcuts({ isOpen, onClose }) {
               color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem',
             }}>
               <span style={{ fontSize: '1.1rem', background: 'var(--accent-gradient)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>⌨️</span>
-              Tasti Rapidi
+              {tr('shortcuts.title')}
             </h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.25rem' }}>Migliora la produttività</p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.25rem' }}>{tr('shortcuts.subtitle')}</p>
           </div>
           <button
             onClick={onClose}
@@ -81,7 +83,7 @@ function KeyboardShortcuts({ isOpen, onClose }) {
             borderRadius: '10px', border: '1px solid rgba(74,158,255,0.1)',
           }}>
             <p style={{ color: 'var(--accent-blue)', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span>💡</span> Suggerimento: Usa i tasti rapidi per navigare più velocemente nell'app!
+              <span>💡</span> {tr('shortcuts.tip')}
             </p>
           </div>
         </div>

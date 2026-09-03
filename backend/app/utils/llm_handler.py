@@ -12,20 +12,22 @@ _session = requests.Session()
 
 
 def _build_context_text(context: List[Dict], max_total_chars: int = 12000, per_doc_chars: int = 1800) -> str:
-    """Costruisce context troncato intelligente: max_total_chars totali, per_doc_chars per doc."""
+    """Costruisce context troncato con Citations 2.0: include p. N quando disponibile."""
     if not context:
         return "Nessun documento trovato nel contesto."
     parts = []
     total = 0
     for i, doc in enumerate(context, 1):
-        filename = doc.get('metadata', {}).get('filename', 'sconosciuto')
+        meta = doc.get('metadata', {}) or {}
+        filename = meta.get('filename', 'sconosciuto')
+        page = meta.get('page')
+        page_str = f" p.{page}" if page else ""
         content = (doc.get('content') or '').strip()
         if not content:
             continue
         chunk = content[:per_doc_chars]
-        entry = f"[Documento {i}] {filename} (score:{doc.get('score','?')}):\n{chunk}"
+        entry = f"[Documento {i}] {filename}{page_str} (score:{doc.get('score','?')}):\n{chunk}"
         if total + len(entry) > max_total_chars:
-            # tronca ultimo doc per stare nel budget
             remaining = max_total_chars - total
             if remaining > 300:
                 entry = entry[:remaining] + " [...troncato]"
@@ -47,7 +49,8 @@ def chat_with_llm(query: str, context: List[Dict], model: str = None, history: L
         "Sei un assistente per una knowledge base Wiki. "
         "Rispondi in italiano, basandoti SOLO sui documenti forniti nel Contesto. "
         "Se l'informazione non è nei documenti, dillo esplicitamente e suggerisci cosa cercare. "
-        "Cita sempre il nome del documento tra parentesi quando usi un'informazione. "
+        "Cita sempre il nome del documento con pagina quando presente, formato `filename p.N` tra parentesi (es. `contratto.pdf p.3`). "
+        "Se il contesto indica p. N usalo; altrimenti cita solo il filename. "
         "Risposta concisa ma completa, usa markdown quando utile."
     )
 

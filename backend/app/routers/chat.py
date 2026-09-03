@@ -182,6 +182,8 @@ async def chat(request: ChatRequest):
             "filename": doc["metadata"].get("filename", ""),
             "score": round(doc["score"], 3),
             "snippet": doc["content"][:200] + "...",
+            "page": doc["metadata"].get("page"),
+            "highlight": doc["content"][:180],
         }
         for doc in context
     ]

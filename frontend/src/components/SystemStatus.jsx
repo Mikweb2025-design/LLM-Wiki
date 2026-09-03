@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { statusApi } from '../utils/api';
+import { useI18n, t } from '../utils/i18n';
 
 function SystemStatus() {
+  const { lang } = useI18n(); const tr = p => t(lang,p);
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -12,7 +14,7 @@ function SystemStatus() {
       setStatus(response.data); setError(null);
     } catch (error) {
       console.error('Errore stato sistema:', error);
-      setError('Impossibile connettersi al server');
+      setError(tr('system.connError'));
     } finally {
       setLoading(false);
     }
@@ -32,7 +34,7 @@ function SystemStatus() {
           borderTop: '3px solid var(--accent-blue)', borderRadius: '50%',
           animation: 'spin 1s linear infinite', marginRight: '0.75rem',
         }}></div>
-        Caricamento stato sistema...
+        {tr('system.loading')}
       </div>
     );
   }
@@ -41,8 +43,8 @@ function SystemStatus() {
     return (
       <div className="glass-card" style={{ maxWidth: '480px', margin: '2rem auto', padding: '2rem', textAlign: 'center' }}>
         <div style={{ fontSize: '2.5rem', marginBottom: '1rem', opacity: 0.8 }}>⚠️</div>
-        <p style={{ color: '#ff5555', fontWeight: 500, marginBottom: '0.5rem' }}>Impossibile connettersi al server</p>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '1.5rem' }}>Verifica che il backend sia attivo</p>
+        <p style={{ color: '#ff5555', fontWeight: 500, marginBottom: '0.5rem' }}>{tr('system.connError')}</p>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '1.5rem' }}>{tr('system.checkBackend')}</p>
         <button
           onClick={fetchStatus}
           style={{
@@ -52,15 +54,15 @@ function SystemStatus() {
           }}
           onMouseEnter={(e) => e.target.style.transform = 'translateY(-1px)'}
           onMouseLeave={(e) => e.target.style.transform = 'none'}
-        >🔄 Riprova</button>
+        >🔄 {tr('system.retry')}</button>
       </div>
     );
   }
 
   const stats = [
     {
-      label: 'Ollama',
-      value: status.ollama_connected ? 'Connesso' : 'Non connesso',
+      label: tr('system.ollama'),
+      value: status.ollama_connected ? tr('system.connected') : tr('system.notConnected'),
       icon: '🤖',
       color: status.ollama_connected ? 'green' : 'red',
       bgColor: status.ollama_connected ? 'rgba(126,231,135,0.05)' : 'rgba(255,85,85,0.05)',
@@ -68,24 +70,24 @@ function SystemStatus() {
       borderColor: status.ollama_connected ? 'rgba(126,231,135,0.15)' : 'rgba(255,85,85,0.15)',
     },
     {
-      label: 'Documenti',
-      value: `${status.total_documents} indicizzati`,
+      label: tr('settings.docs'),
+      value: `${status.total_documents} ${tr('system.indexed')}`,
       icon: '📚',
       color: 'blue',
       bgColor: 'rgba(74,158,255,0.05)', textColor: 'var(--accent-blue)',
       borderColor: 'rgba(74,158,255,0.15)',
     },
     {
-      label: 'Chunk',
-      value: `${status.total_chunks} segmenti`,
+      label: tr('settings.chunks'),
+      value: `${status.total_chunks} ${tr('system.segments')}`,
       icon: '🧩',
       color: 'purple',
       bgColor: 'rgba(168,85,247,0.05)', textColor: 'var(--accent-purple)',
       borderColor: 'rgba(168,85,247,0.15)',
     },
     {
-      label: 'Modello',
-      value: status.current_model || 'Nessuno',
+      label: tr('settings.model'),
+      value: status.current_model || tr('system.noModel'),
       icon: '⚡',
       color: 'yellow',
       bgColor: 'rgba(255,166,87,0.05)', textColor: 'var(--accent-orange)',
@@ -103,7 +105,7 @@ function SystemStatus() {
             color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem',
           }}>
             <span style={{ fontSize: '1.2rem', background: 'var(--accent-gradient)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>⚙️</span>
-            Stato Sistema
+            {tr('system.title')}
           </h2>
           <button
             onClick={fetchStatus}
@@ -146,10 +148,10 @@ function SystemStatus() {
           fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontWeight: 600,
           color: 'var(--text-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem',
         }}>
-          <span style={{ fontSize: '1rem' }}>📦</span> Modelli Disponibili
+          <span style={{ fontSize: '1rem' }}>📦</span> {tr('system.availableModels')}
         </h3>
         {status.available_models?.length === 0 ? (
-          <p style={{ color: 'var(--text-secondary)', padding: '1rem', textAlign: 'center', fontSize: '0.85rem' }}>Nessun modello installato</p>
+          <p style={{ color: 'var(--text-secondary)', padding: '1rem', textAlign: 'center', fontSize: '0.85rem' }}>{tr('system.noModels')}</p>
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
             {status.available_models?.map((model, index) => (
@@ -172,7 +174,7 @@ function SystemStatus() {
             borderRadius: '10px', border: '1px solid rgba(255,166,87,0.15)',
           }}>
             <p style={{ color: 'var(--accent-orange)', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span>⚠️</span> Per installare un modello: <code style={{ background: 'rgba(255,166,87,0.1)', padding: '0.15rem 0.4rem', borderRadius: '4px', marginLeft: '0.5rem', fontFamily: 'var(--font-mono)' }}>ollama pull llama3</code>
+              <span>⚠️</span> {tr('system.installHint')}: <code style={{ background: 'rgba(255,166,87,0.1)', padding: '0.15rem 0.4rem', borderRadius: '4px', marginLeft: '0.5rem', fontFamily: 'var(--font-mono)' }}>ollama pull llama3</code>
             </p>
           </div>
         )}
@@ -184,13 +186,13 @@ function SystemStatus() {
           fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontWeight: 600,
           color: 'var(--text-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem',
         }}>
-          <span style={{ fontSize: '1rem' }}>📖</span> Guida Installazione
+          <span style={{ fontSize: '1rem' }}>📖</span> {tr('system.installGuide')}
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {[
-            { step: 1, title: 'Installa Ollama', desc: 'Scarica da', link: 'https://ollama.ai', linkText: 'ollama.ai' },
-            { step: 2, title: 'Scarica modelli', code: ['ollama pull llama3', 'ollama pull nomic-embed-text'] },
-            { step: 3, title: 'Installa Tesseract (OCR)', code: ['brew install tesseract'], note: 'Solo per OCR immagini' },
+            { step: 1, title: tr('system.installOllama'), desc: tr('system.downloadFrom'), link: 'https://ollama.ai', linkText: 'ollama.ai' },
+            { step: 2, title: tr('system.downloadModels'), code: ['ollama pull llama3', 'ollama pull nomic-embed-text'] },
+            { step: 3, title: tr('system.installTesseract'), code: ['brew install tesseract'], note: 'Solo per OCR immagini' },
           ].map((item) => (
             <div key={item.step} style={{
               padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '10px',

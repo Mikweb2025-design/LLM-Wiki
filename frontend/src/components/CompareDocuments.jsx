@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { documentsApi } from '../utils/api';
+import { useI18n, t } from '../utils/i18n';
 
 function CompareDocuments({ showToast }) {
+  const { lang } = useI18n(); const tr = p => t(lang,p);
   const [doc1, setDoc1] = useState(null);
   const [doc2, setDoc2] = useState(null);
   const [documents, setDocuments] = useState([]);
@@ -16,8 +18,8 @@ function CompareDocuments({ showToast }) {
   }, []);
 
   const handleCompare = async () => {
-    if (!doc1 || !doc2) { showToast('Seleziona due documenti da confrontare', 'warning'); return; }
-    if (doc1.filename === doc2.filename) { showToast('Seleziona due documenti diversi', 'warning'); return; }
+    if (!doc1 || !doc2) { showToast(tr('compare.selectTwo'), 'warning'); return; }
+    if (doc1.filename === doc2.filename) { showToast(tr('compare.selectDifferent'), 'warning'); return; }
     setComparing(true); setResult(null);
     try {
       const [res1, res2] = await Promise.all([
@@ -38,7 +40,7 @@ function CompareDocuments({ showToast }) {
       if (d2.reason && d2.reason.includes('troncato')) warnings.push({ name: doc2.filename, reason: d2.reason });
       if (warnings.length) {
         showToast(
-          `Nessun testo estratto da ${warnings.length === 2 ? 'entrambi i file' : warnings[0].name}. ` +
+          `${tr('compare.noText')} ${warnings.length === 2 ? 'entrambi i file' : warnings[0].name}. ` +
           (warnings[0].reason || 'Verifica formato/OCR.'),
           'warning'
         );
@@ -52,12 +54,12 @@ function CompareDocuments({ showToast }) {
         diff.originalLength1 = d1.original_length || d1.length || 0;
         diff.originalLength2 = d2.original_length || d2.length || 0;
         setResult(diff);
-        if (!warnings.length) showToast('Confronto completato!', 'success');
+        if (!warnings.length) showToast(tr('compare.done'), 'success');
       } catch (diffError) {
-        showToast('Errore nella generazione del confronto: ' + diffError.message, 'error');
+        showToast(tr('common.error') + ': ' + diffError.message, 'error');
       }
     } catch (e) {
-      showToast('Errore durante il confronto: ' + e.message, 'error');
+      showToast(tr('common.error') + ': ' + e.message, 'error');
     } finally {
       setComparing(false);
     }
@@ -106,7 +108,7 @@ function CompareDocuments({ showToast }) {
           border: '3px solid rgba(74,158,255,0.1)', borderTop: '3px solid var(--accent-blue)',
           borderRadius: '50%', animation: 'spin 1s linear infinite', marginRight: '0.75rem',
         }}></div>
-        Caricamento...
+        {tr('common.loading')}
       </div>
     );
   }
@@ -119,11 +121,11 @@ function CompareDocuments({ showToast }) {
         display: 'flex', alignItems: 'center', gap: '0.5rem',
       }}>
         <span style={{ fontSize: '1.2rem', background: 'linear-gradient(135deg, #7ee787 0%, #4a9eff 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>📈</span>
-        Confronta Documenti
+        {tr('compare.title')}
       </h2>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
-        {[{ doc: doc1, setDoc: setDoc1, label: 'Documento 1' }, { doc: doc2, setDoc: setDoc2, label: 'Documento 2' }].map(({ doc, setDoc, label }, idx) => (
+        {[{ doc: doc1, setDoc: setDoc1, label: tr('compare.doc1') }, { doc: doc2, setDoc: setDoc2, label: tr('compare.doc2') }].map(({ doc, setDoc, label }, idx) => (
           <div key={idx} style={{
             background: 'var(--bg-glass)', borderRadius: '14px', padding: '1rem 1.25rem',
             border: '1px solid var(--border-glass)', transition: 'border-color 0.3s',
@@ -141,7 +143,7 @@ function CompareDocuments({ showToast }) {
                 fontSize: '0.85rem', fontFamily: 'var(--font-sans)', cursor: 'pointer', outline: 'none',
               }}
             >
-              <option value="">-- Seleziona --</option>
+              <option value="">{tr('compare.selectPlaceholder')}</option>
               {documents.map(d => (
                 <option key={d.filename} value={d.filename}>
                   {d.filename} ({formatSize(d.size_bytes)})
@@ -175,10 +177,10 @@ function CompareDocuments({ showToast }) {
         {comparing ? (
           <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
             <div style={{ width: '16px', height: '16px', border: '2px solid rgba(15,15,25,0.1)', borderTop: '2px solid var(--bg-dark)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-            Confronto in corso...
+            {tr('compare.comparing')}
           </span>
         ) : (
-          '🔍 Confronta Documenti'
+          '🔍 ' + tr('compare.btn')
         )}
       </button>
 
@@ -196,26 +198,26 @@ function CompareDocuments({ showToast }) {
               fontSize: '0.82rem',
               lineHeight: 1.5,
             }}>
-              <div style={{ fontWeight: 600, marginBottom: '0.3rem' }}>⚠️ Testo non estraibile</div>
+              <div style={{ fontWeight: 600, marginBottom: '0.3rem' }}>⚠️ {tr('compare.notExtractable')}</div>
               {result.warnings.map((w, i) => (
                 <div key={i} style={{ fontFamily: 'var(--font-mono)', opacity: 0.9 }}>
                   • <strong>{w.name}</strong>: {w.reason}
                 </div>
               ))}
               <div style={{ marginTop: '0.4rem', opacity: 0.75 }}>
-                Per scansioni/immagini installa <code>tesseract</code> + <code>pdf2image</code>:
+                {tr('compare.ocrHint')}:
                 <code style={{ marginLeft: '0.3rem' }}>brew install tesseract poppler</code>
               </div>
             </div>
           )}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-            <h3 style={{ color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 600 }}>Risultati Confronto</h3>
+            <h3 style={{ color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 600 }}>{tr('compare.results')}</h3>
             <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', fontFamily: 'var(--font-mono)' }}>
-              <span style={{ color: 'var(--accent-green)', background: 'rgba(126,231,135,0.1)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>✓ {result.same} uguali</span>
-              <span style={{ color: '#ffa657', background: 'rgba(255,166,87,0.1)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>⚡ {result.total - result.same} diversi</span>
+              <span style={{ color: 'var(--accent-green)', background: 'rgba(126,231,135,0.1)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>✓ {result.same} {tr('compare.same')}</span>
+              <span style={{ color: '#ffa657', background: 'rgba(255,166,87,0.1)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>⚡ {result.total - result.same} {tr('compare.different')}</span>
               {result.truncated && (
                 <span style={{ color: '#ffa657', background: 'rgba(255,166,87,0.1)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
-                  ⚠️ Confronto limitato a {result.total} righe
+                  ⚠️ {tr('compare.truncated')} {result.total} righe
                 </span>
               )}
             </div>
@@ -250,7 +252,7 @@ function CompareDocuments({ showToast }) {
             ))}
             {result.diff.length > 500 && (
               <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                Mostrati primi 500 di {result.diff.length} risultati
+                {tr('compare.showing500')} {result.diff.length} risultati
               </div>
             )}
           </div>
