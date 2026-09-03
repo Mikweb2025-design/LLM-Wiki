@@ -1,5 +1,6 @@
 """API Router per Chat — include streaming SSE + grafici intelligenti da chat."""
 import re
+import asyncio
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from app.models.schemas import ChatRequest, ChatResponse
@@ -28,7 +29,7 @@ _CHART_KEYWORDS = [
 _CHART_EXPLICIT = ["grafico", "grafici", "diagramma", "diagrammi", "chart", "charts", "graph", "diagram", "diagramm", "diagramme", "grafik", "grafiken"]
 # per preset auto — IT/EN/DE
 _SPESA_HINT = ["benzina", "carburante", "diesel", "fuel", "kraftstoff", "benzin", "cibo", "food", "lebensmittel", "spesa", "spese", "ausgaben", "affitto", "rent", "miete", "utenze", "bollette", "nebenkosten"]
-_GUADAGNO_HINT = ["guadagn", "stipend", "earnings", "income", "salary", "gehalt", "lohn", "verdienst", "einkommen"]
+_GUADAGNO_HINT = ["guadagn", "stipend", "earnings", "income", "salary", "gehalt", "lohn", "verdienst", "einkommen", "einnahmen", "einnahme"]
 
 def _detect_chart_intent(msg: str) -> bool:
     low = msg.lower()
@@ -86,8 +87,9 @@ async def _try_build_chart(query: str, context) -> dict | None:
         low = query.lower()
         # Se query chiede guadagni/stipendi o "tutti" → prendi TUTTI i doc rilevanti per preset (non solo i top 8 semantici che spesso sono rumore)
         is_all = any(k in low for k in ["tutti", "tutte", "tutto", "all", "alle"])
-        is_guadagni = any(k in low for k in ["guadagn", "stipend", "earnings", "income", "gehalt", "lohn", "mie guadagni", "miei guadagni"])
-        if is_all or is_guadagni or len(filenames) < 3:
+        is_guadagni = any(k in low for k in ["guadagn", "stipend", "earnings", "income", "gehalt", "lohn", "verdienst", "einkommen", "mie guadagni", "miei guadagni"])
+        is_spesa = any(k in low for k in ["ausgaben", "ausgabe", "spesa", "spese", "expenditure", "spent"])
+        if is_all or is_guadagni or is_spesa or len(filenames) < 3:
             try:
                 from app.utils.database import get_all_documents
                 all_docs = get_all_documents() or []
@@ -102,9 +104,17 @@ async def _try_build_chart(query: str, context) -> dict | None:
                         filenames = [d["filename"] for d in all_docs[:20]]
                 elif "benzina" in low or "carburante" in low:
                     # per benzina, cerca doc con benzina nel filename o prendi spese generiche
-                    kw = ["benzina", "carburante", "diesel", "fuel", "tank"]
+                    kw = ["benzina", "carburante", "diesel", "fuel", "tank", "kraftstoff", "benzin"]
                     filtered = [d for d in all_docs if any(k in d["filename"].lower() for k in kw)]
                     filenames = [d["filename"] for d in (filtered[:12] if filtered else all_docs[:12])]
+                elif is_spesa and preset_hint == "spese":
+                    # spese generiche (DE/IT/EN) → prova filtra per fattura/beleg/spesa, altrimenti prendi ampi set
+                    kw = ["fattura", "invoice", "rechnung", "beleg", "quittung", "spesa", "spese", "ausgaben", "kauf", "einkauf"]
+                    filtered = [d for d in all_docs if any(k in d["filename"].lower() for k in kw)]
+                    if len(filtered) >= 2:
+                        filenames = [d["filename"] for d in filtered[:12]]
+                    else:
+                        filenames = [d["filename"] for d in all_docs[:12]]
                 else:
                     # default: prendi tutti i doc se "tutti"
                     if is_all:
@@ -175,7 +185,7 @@ async def chat(request: ChatRequest):
     model = request.model or IONOS_MODEL
     # estrai history se presente nella request (campo opzionale)
     history = getattr(request, 'history', None) or []
-    result = chat_with_llm(request.message, context, model, history=history, lang=lang)
+    result = await asyncio.to_thread(chat_with_llm, request.message, context, model, history, lang)
 
     if isinstance(result, dict):
         answer = result.get("answer", str(result))
@@ -198,16 +208,30 @@ async def chat(request: ChatRequest):
         for doc in context
     ]
 
-    # Grafico intelligente se intent rilevato
+    # Grafico intelligente se intent rilevato — note localizzate
     chart = None
     if _detect_chart_intent(request.message):
         chart = await _try_build_chart(request.message, context)
         if chart:
-            # Se LLM dice "non posso creare grafico" ma noi lo abbiamo creato, sovrascrivi con nota positiva
-            if "non posso" in answer.lower() and "grafico" in answer.lower():
-                answer += f"\n\n📊 *Grafico generato con successo dai tuoi documenti ({chart['preset']} per {chart['group_by']}, totale {chart['total']}€ su {chart['count']} documenti).*"
-            elif "grafico" not in answer.lower() and "chart" not in answer.lower():
-                answer += f"\n\n📊 *Grafico generato automaticamente ({chart['preset']} per {chart['group_by']}, totale {chart['total']}€).*"
+            chart_notes = {
+                "it": (f"\n\n📊 *Grafico generato con successo dai tuoi documenti ({chart['preset']} per {chart['group_by']}, totale {chart['total']}€ su {chart['count']} documenti).*",
+                       f"\n\n📊 *Grafico generato automaticamente ({chart['preset']} per {chart['group_by']}, totale {chart['total']}€).*"),
+                "en": (f"\n\n📊 *Chart successfully generated from your documents ({chart['preset']} by {chart['group_by']}, total {chart['total']}€ on {chart['count']} documents).*",
+                       f"\n\n📊 *Chart automatically generated ({chart['preset']} by {chart['group_by']}, total {chart['total']}€).*"),
+                "de": (f"\n\n📊 *Diagramm erfolgreich aus deinen Dokumenten erstellt ({chart['preset']} nach {chart['group_by']}, gesamt {chart['total']}€ auf {chart['count']} Dokumenten).*",
+                       f"\n\n📊 *Diagramm automatisch erstellt ({chart['preset']} nach {chart['group_by']}, gesamt {chart['total']}€).*"),
+            }
+            cant_phrases = {"it": "non posso", "en": "can't", "de": "kann nicht"}
+            chart_words = {"it": "grafico", "en": "chart", "de": "diagramm"}
+            # scegli note in base a lang
+            note_success, note_auto = chart_notes.get(lang, chart_notes["it"])
+            cant = cant_phrases.get(lang, "non posso")
+            cw = chart_words.get(lang, "grafico")
+            # Se LLM dice non posso ma noi abbiamo chart, aggiungi nota success; altrimenti se non menziona chart, aggiungi auto
+            if cant in answer.lower() and cw in answer.lower():
+                answer += note_success
+            elif cw not in answer.lower() and "chart" not in answer.lower() and "diagramm" not in answer.lower() and "grafik" not in answer.lower():
+                answer += note_auto
 
     return ChatResponse(answer=answer, sources=sources, model=f"{model} ({provider})", chart=chart)
 
