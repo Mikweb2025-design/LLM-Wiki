@@ -83,18 +83,25 @@ def chat_with_llm(query: str, context: List[Dict], model: str = None, history: L
 
     messages = [{"role": "system", "content": system_prompt}]
 
-    # aggiungi history (max 6 turni per non esplodere context)
+    # aggiungi history (max 6 turni per non esplodere context) — supporta sia dict che ChatMessage pydantic
     if history:
         for h in history[-6:]:
-            role = h.get("role")
-            content = (h.get("content") or "").strip()
+            if isinstance(h, dict):
+                role = h.get("role")
+                content = (h.get("content") or "").strip()
+            else:
+                role = getattr(h, "role", None)
+                content = (getattr(h, "content", "") or "").strip()
             if role in ("user", "assistant") and content:
                 # evita di duplicare la query corrente
                 if role == "user" and content == query:
                     continue
                 messages.append({"role": role, "content": content[:800]})
 
-    messages.append({"role": "user", "content": f"Contesto:\n{context_text}\n\nDomanda: {query}"})
+    # Domanda localizzata
+    q_label = {"it": "Domanda", "en": "Question", "de": "Frage"}.get((lang or "it")[:2].lower(), "Domanda")
+    ctx_label = {"it": "Contesto", "en": "Context", "de": "Kontext"}.get((lang or "it")[:2].lower(), "Contesto")
+    messages.append({"role": "user", "content": f"{ctx_label}:\n{context_text}\n\n{q_label}: {query}"})
 
     # Prima IONOS (cloud)
     if USE_IONOS:
@@ -143,9 +150,15 @@ def chat_with_llm_stream(query: str, context: List[Dict], model: str = None, his
     messages = [{"role": "system", "content": system_prompt}]
     if history:
         for h in history[-6:]:
-            if h.get("role") in ("user", "assistant") and h.get("content"):
-                messages.append({"role": h["role"], "content": h["content"][:800]})
-    messages.append({"role": "user", "content": f"Contesto:\n{context_text}\n\nDomanda: {query}"})
+            if isinstance(h, dict):
+                rh = h.get("role"); ct = h.get("content")
+            else:
+                rh = getattr(h, "role", None); ct = getattr(h, "content", "")
+            if rh in ("user", "assistant") and ct:
+                messages.append({"role": rh, "content": ct[:800]})
+    q_label = {"it": "Domanda", "en": "Question", "de": "Frage"}.get((lang or "it")[:2].lower(), "Domanda")
+    ctx_label = {"it": "Contesto", "en": "Context", "de": "Kontext"}.get((lang or "it")[:2].lower(), "Contesto")
+    messages.append({"role": "user", "content": f"{ctx_label}:\n{context_text}\n\n{q_label}: {query}"})
 
     # Prova IONOS streaming
     if USE_IONOS:
