@@ -16,7 +16,7 @@
 - **Voice input** → Vosk offline STT + WebSpeech fallback
 - **Conversation memory** — last 6 turns
 - **History** persisted in SQLite (`GET /api/chat/history`)
-- **Smart charts from chat** — ask *“fammi un grafico di tutti i miei guadagni”* or *“quanto ho speso per benzina? fammi un grafico”* → `POST /api/chat/` returns `{answer, sources, chart}` rendered inline as mini bar chart (auto preset `stipendi`/`spese`, group by month, cached 1h, parallel 4 workers: 50s → 14s cold, 6s cached)
+- **Smart charts from chat** — ask *“show me a chart of all my earnings”* (`fammi un grafico di tutti i miei guadagni`) or *“how much did I spend on fuel? show me a chart”* (`quanto ho speso per benzina? fammi un grafico`) → `POST /api/chat/` returns `{answer, sources, chart}` rendered inline as mini bar chart (auto preset `stipendi`/`spese`, group by month, cached 1h, parallel 4 workers: 50s → 14s cold, 6s cached)
 
 ### 📄 Document Management
 - **Multi-format**: PDF (native + OCR), images (Tesseract), Excel (streaming), Word, PPTX, CSV, HTML/MD, TXT
@@ -31,7 +31,7 @@
 - Filter by extension/filename/tag, debounced 400 ms
 
 ### 📊 Analytics & Charts — user-configurable
-- **Analytics tab** (`Grafici`/`Charts`/`Diagramme`): multi-select docs, preset (`fatture`/`spese`/`stipendi`/`custom`), **field selector** (`importo`/`importo_netto`/`importo_lordo`), group by (`month`/`categoria`/`fornitore`), chart type (Bar/Line/Pie/Table) — SVG custom, no external dep, `POST /api/analytics/aggregate` with `sum_field` override
+- **Analytics tab** (`Charts`): multi-select docs, preset (`fatture`/`spese`/`stipendi`/`custom`), **field selector** (`importo`/`importo_netto`/`importo_lordo`), group by (`month`/`categoria`/`fornitore`), chart type (Bar/Line/Pie/Table) — SVG custom, no external dep, `POST /api/analytics/aggregate` with `sum_field` override
 - **Excel/CSV** parsed directly (no LLM), **PDF** via LLM JSON + regex fallback + **parallel 4 workers + cache** (36s → 9s)
 - **Table + JSON copy** + raw rows preview
 
@@ -188,7 +188,7 @@ LLM-Wiki/
 ## 🔌 API Reference
 
 ### Chat
-- `POST /api/chat/` — `{message, history?, model?}` → `{answer, sources, model, chart?}` (`chart` present when `grafico|chart` detected)
+- `POST /api/chat/` — `{message, history?, model?, lang?}` → `{answer, sources, model, chart?}` (`chart` present when `grafico|chart|diagramm` detected, lang `it|en|de`)
 - `POST /api/chat/stream` — SSE `data: {"token": "..."}` + `{"done":true, sources, chart?}`
 - `GET /api/chat/history` / `models`
 
@@ -216,8 +216,8 @@ LLM-Wiki/
 ## 📖 Usage
 
 1. **Upload**: drag & drop in **Upload** or copy to `backend/data/documents/` → **Scan** (auto-tagged)
-2. **Chat**: type or 🎤 — try *“Fammi un grafico di tutti i miei guadagni”* or *“quanto ho speso per benzina? fammi un grafico”* → inline chart (14s cold, 6s cached)
-3. **Analytics**: **Grafici** tab → select docs → preset → field (`importo_lordo` for stipendi) → group by → **Genera**
+2. **Chat**: type or 🎤 — try *“show me a chart of all my earnings”* or *“how much did I spend on fuel? show me a chart”* → inline chart (14s cold, 6s cached)
+3. **Analytics**: **Charts** tab → select docs → preset → field (`importo_lordo` for stipendi) → group by → **Generate**
 4. **Search**: debounced, filter by type/size/tag
 5. **Documents**: filter by tag (`fattura` 40, `stipendio` 22), **Auto-Tag** button, batch reindex
 6. **Compare**: pick 2 docs → **Confronta**
