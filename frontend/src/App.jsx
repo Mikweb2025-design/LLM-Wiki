@@ -1,22 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import Chat from './components/Chat';
 import UploadForm from './components/UploadForm';
 import DocumentList from './components/DocumentList';
-import SystemStatus from './components/SystemStatus';
-import Settings from './components/Settings';
 import Dashboard from './components/Dashboard';
-import SearchWithFilters from './components/SearchWithFilters';
-import ExportChat from './components/ExportChat';
-import KeyboardShortcuts from './components/KeyboardShortcuts';
-import CompareDocuments from './components/CompareDocuments';
-import Folders from './components/Folders';
-import Roadmap from './components/Roadmap';
-import Analytics from './components/Analytics';
 import NotificationCenter, { useNotifications } from './components/NotificationCenter';
 import DiagnosticPanel from './components/DiagnosticPanel';
 import { I18nContext, getInitialLang, t } from './utils/i18n';
 import { LANGS } from './utils/i18n';
 import './index.css';
+
+// Heavy tabs — code-split per ridurre bundle iniziale (~138k -> ~95k)
+const SearchWithFilters = lazy(() => import('./components/SearchWithFilters'));
+const Folders = lazy(() => import('./components/Folders'));
+const CompareDocuments = lazy(() => import('./components/CompareDocuments'));
+const Analytics = lazy(() => import('./components/Analytics'));
+const ExportChat = lazy(() => import('./components/ExportChat'));
+const SystemStatus = lazy(() => import('./components/SystemStatus'));
+const Settings = lazy(() => import('./components/Settings'));
+const Roadmap = lazy(() => import('./components/Roadmap'));
+const KeyboardShortcuts = lazy(() => import('./components/KeyboardShortcuts'));
 
 function App() {
   const [activeTab, setActiveTab] = useState('chat');
@@ -96,11 +98,20 @@ function App() {
       roadmap: Roadmap,
     };
     const Component = components[tabId];
-    // Expose global navigate for any child that needs it (Quick Actions)
     if (typeof window !== 'undefined') window.__llmwiki_navigate = setActiveTab;
-    // Dashboard needs navigation for Quick Actions
-    if (tabId === 'dashboard') return <Component showToast={addToast} onNavigate={setActiveTab} />;
-    return Component ? <Component showToast={addToast} /> : null;
+    const needsSuspense = ['search','folders','compare','analytics','export','status','settings','roadmap'].includes(tabId);
+    const el = (() => {
+      if (tabId === 'dashboard') return <Component showToast={addToast} onNavigate={setActiveTab} />;
+      return Component ? <Component showToast={addToast} /> : null;
+    })();
+    if (needsSuspense) {
+      return (
+        <Suspense fallback={<div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'2rem', color:'var(--text-secondary)' }}><div style={{ width:'24px', height:'24px', border:'2px solid rgba(74,158,255,0.1)', borderTop:'2px solid var(--accent-blue)', borderRadius:'50%', animation:'spin 1s linear infinite', marginRight:'0.6rem' }} />Loading…</div>}>
+          {el}
+        </Suspense>
+      );
+    }
+    return el;
   };
 
   const handleLangChange = (code) => {
@@ -117,7 +128,11 @@ function App() {
     }}>
       <NotificationCenter toasts={toasts} onRemove={removeToast} />
 
-      {showShortcuts && <KeyboardShortcuts isOpen={showShortcuts} onClose={() => setShowShortcuts(false)} />}
+      {showShortcuts && (
+        <Suspense fallback={null}>
+          <KeyboardShortcuts isOpen={showShortcuts} onClose={() => setShowShortcuts(false)} />
+        </Suspense>
+      )}
 
       {/* Animated gradient orbs in background */}
       <div style={{

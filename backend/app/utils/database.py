@@ -12,12 +12,16 @@ _pool = threading.local()
 
 
 def get_db_connection():
-    """Ottiene connessione riutilizzabile al database (una per thread)"""
+    """Ottiene connessione riutilizzabile al database (una per thread) — ottimizzata per performance."""
     if not hasattr(_pool, "conn") or _pool.conn is None:
         _pool.conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
         _pool.conn.row_factory = sqlite3.Row
         _pool.conn.execute("PRAGMA journal_mode=WAL")
         _pool.conn.execute("PRAGMA synchronous=NORMAL")
+        _pool.conn.execute("PRAGMA cache_size=-64000")  # 64MB cache
+        _pool.conn.execute("PRAGMA temp_store=MEMORY")
+        _pool.conn.execute("PRAGMA journal_size_limit=67108864")  # 64MB WAL cap
+        _pool.conn.execute("PRAGMA foreign_keys=ON")
     return _pool.conn
 
 

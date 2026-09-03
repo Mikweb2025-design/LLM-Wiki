@@ -17,8 +17,19 @@ _embeddings = None
 # Senza questa cache, ogni query ricaricava TUTTI i chunk dal disco (O(N)).
 _collection_cache: Optional[Dict] = None
 _collection_cache_ts: float = 0.0
-_collection_cache_ttl: float = 300.0  # 5 min hard ttl di sicurezza
+_collection_cache_ttl: float = 600.0  # 10 min (era 5, aumentato per ridurre snapshot reload)
 _collection_lock = threading.Lock()
+
+# Cache risultati ricerca — evita re-embedding e RRF per query ripetute (Dashboard Insights, chat rapide)
+_search_cache: Dict[str, tuple] = {}  # key -> (ts, result)
+_search_cache_ttl: float = 120.0
+_search_cache_max: int = 128
+_search_cache_lock = threading.Lock()
+
+# Cache query embedding — evita chiamata Ollama per stessa query
+_query_emb_cache: Dict[str, tuple] = {}  # query_lower -> (ts, embedding)
+_query_emb_ttl: float = 300.0
+_query_emb_lock = threading.Lock()
 
 
 def get_embeddings():
@@ -129,6 +140,23 @@ def _invalidate_collection_cache() -> None:
     with _collection_lock:
         _collection_cache = None
         _collection_cache_ts = 0.0
+    # invalida anche search cache (contiene chunk vecchi)
+    with _search_cache_lock:
+        _search_cache.clear()
+
+def _search_cache_get(key: str):
+    with _search_cache_lock:
+        hit = _search_cache.get(key)
+        if hit and (time.monotonic() - hit[0]) < _search_cache_ttl:
+            return hit[1]
+    return None
+
+def _search_cache_set(key: str, value):
+    with _search_cache_lock:
+        if len(_search_cache) > _search_cache_max:
+            oldest = min(_search_cache, key=lambda k: _search_cache[k][0])
+            _search_cache.pop(oldest, None)
+        _search_cache[key] = (time.monotonic(), value)
 
 
 def _get_collection_snapshot() -> Dict:
@@ -156,21 +184,29 @@ def _get_collection_snapshot() -> Dict:
 
 
 def search_documents(query: str, n_results: int = 5, score_threshold: float = None) -> List[Dict]:
-    """Cerca documenti rilevanti — hybrid semantic + keyword con RRF fusion e dedup.
+    """Cerca documenti rilevanti — hybrid semantic + keyword con RRF fusion e dedup + cache.
 
     Miglioramenti performance:
+    - result cache 120s per (query,n) — evita re-embedding per query ripetute (Insights, chat similar)
     - keyword scan limitato a snapshot cached + early pruning (max 500 hit)
     - semantic k = n*2 ma clamped a 20 per evitare embedding costoso
     - fusion via Reciprocal Rank Fusion invece di naive concat
     """
     import math
+    # cache check (query normalizzata)
+    cache_key = f"{query.lower().strip()}::{n_results}::{score_threshold}"
+    cached = _search_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     vector_store = get_vector_store()
 
     # 1. Ricerca semantica (k limitato per performance embedding)
     k_sem = min(n_results * 2, 20)
     try:
         semantic_results = vector_store.similarity_search_with_score(query, k=k_sem)
-    except Exception:
+    except Exception as e:
+        print(f"[WARN] semantic search failed: {e}")
         semantic_results = []
 
     # 2. Keyword search (TF-ish con pruning)
@@ -247,6 +283,7 @@ def search_documents(query: str, n_results: int = 5, score_threshold: float = No
     result = []
     for c in combined[:n_results]:
         result.append({"content": c["content"], "score": round(c["rrf"], 4), "metadata": c["metadata"]})
+    _search_cache_set(cache_key, result)
     return result
 
 

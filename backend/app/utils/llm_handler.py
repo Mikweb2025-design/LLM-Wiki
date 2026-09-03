@@ -10,6 +10,33 @@ USE_IONOS = bool(IONOS_API_KEY)
 # Sessione HTTP riusabile (keep-alive) -> meno latenza, meno handshake TLS
 _session = requests.Session()
 
+# Cache risposte chat — evita LLM call per query identiche (TTL 5m, max 64)
+_chat_cache: Dict[str, tuple] = {}
+_chat_cache_ttl: float = 300.0
+_chat_cache_max: int = 64
+import time as _time, hashlib, threading as _th
+_chat_cache_lock = _th.Lock()
+
+def _chat_cache_key(query: str, lang: str, context: List[Dict]) -> str:
+    # hash contesto: concatena filename+page+prime 80 chars per doc
+    ctx_sig = "|".join(f"{c.get('metadata',{}).get('filename','')}:{c.get('metadata',{}).get('page','')}:{c.get('content','')[:80]}" for c in (context or [])[:4])
+    raw = f"{query.strip().lower()}::{lang}::{ctx_sig}"
+    return hashlib.md5(raw.encode()).hexdigest()
+
+def _chat_cache_get(key: str):
+    with _chat_cache_lock:
+        hit = _chat_cache.get(key)
+        if hit and (_time.monotonic() - hit[0]) < _chat_cache_ttl:
+            return hit[1]
+    return None
+
+def _chat_cache_set(key: str, value: str):
+    with _chat_cache_lock:
+        if len(_chat_cache) > _chat_cache_max:
+            oldest = min(_chat_cache, key=lambda k: _chat_cache[k][0])
+            _chat_cache.pop(oldest, None)
+        _chat_cache[key] = (_time.monotonic(), value)
+
 
 def _build_context_text(context: List[Dict], max_total_chars: int = 12000, per_doc_chars: int = 1800) -> str:
     """Costruisce context troncato con Citations 2.0: include p. N quando disponibile."""
@@ -72,11 +99,19 @@ def _system_prompt_for_lang(lang: str, with_citations: bool = True) -> str:
     )
 
 def chat_with_llm(query: str, context: List[Dict], model: str = None, history: List[Dict] = None, lang: str = "it") -> str:
-    """Chatta con LLM usando IONOS (primario) e Ollama (fallback).
+    """Chatta con LLM usando IONOS (primario) e Ollama (fallback) + cache.
 
     history: lista di {role, content} per memoria conversazionale (ultimi 6 msg).
     lang: 'it' | 'en' | 'de' — lingua risposta.
     """
+    # cache check — solo se senza history (history cambia risposta)
+    use_cache = not history or len(history)==0
+    cache_key = None
+    if use_cache:
+        cache_key = _chat_cache_key(query, lang, context)
+        hit = _chat_cache_get(cache_key)
+        if hit is not None:
+            return hit
     context_text = _build_context_text(context)
 
     system_prompt = _system_prompt_for_lang(lang, with_citations=True)
@@ -121,7 +156,10 @@ def chat_with_llm(query: str, context: List[Dict], model: str = None, history: L
                 timeout=120,
             )
             if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"]
+                ans = response.json()["choices"][0]["message"]["content"]
+                if use_cache and cache_key:
+                    _chat_cache_set(cache_key, ans)
+                return ans
             print(f"[WARN] IONOS error {response.status_code}: {response.text[:200]}")
         except Exception as e:
             print(f"[WARN] IONOS exception: {e}")
@@ -134,7 +172,10 @@ def chat_with_llm(query: str, context: List[Dict], model: str = None, history: L
             messages=messages,
             options={"temperature": 0.3, "num_ctx": 8192}
         )
-        return response["message"]["content"]
+        ans = response["message"]["content"]
+        if use_cache and cache_key:
+            _chat_cache_set(cache_key, ans)
+        return ans
     except Exception as e:
         return f"Errore: IONOS e Ollama non disponibili. {str(e)}"
 

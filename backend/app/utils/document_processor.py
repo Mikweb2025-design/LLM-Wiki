@@ -82,19 +82,41 @@ def _ionos_vision_ocr(image_path: str) -> str:
         print(f"[WARN] IONOS Vision exception: {e}")
         return ""
 
-def extract_text_from_pdf(file_path: str) -> str:
-    """Estrae testo da PDF — Hybrid: pypdf text → Tesseract per pagina → IONOS Vision fallback per pagine povere."""
+def _try_fitz_extract(file_path: str) -> list | None:
+    """Prova estrazione veloce con PyMuPDF (fitz), ritorna lista page_texts o None se non disponibile/fallisce."""
     try:
-        from pypdf import PdfReader
+        import fitz  # PyMuPDF — 5-10x più veloce di pypdf
+        doc = fitz.open(file_path)
+        texts = []
+        for page in doc:
+            t = (page.get_text("text") or "").strip()
+            texts.append(t)
+        doc.close()
+        return texts
+    except ImportError:
+        return None
+    except Exception as e:
+        print(f"[WARN] fitz extract fallito {file_path}: {e}")
+        return None
+
+def extract_text_from_pdf(file_path: str) -> str:
+    """Estrae testo da PDF — Hybrid: fitz/pypdf text → Tesseract per pagina → IONOS Vision fallback per pagine povere."""
+    try:
         from app.config import OCR_MIN_CHARS_PER_PAGE
-        reader = PdfReader(file_path)
-        page_texts = []
+        # 1. Prova fitz veloce
+        page_texts = _try_fitz_extract(file_path)
+        if page_texts is None:
+            # fallback pypdf
+            from pypdf import PdfReader
+            reader = PdfReader(file_path)
+            page_texts = []
+            for idx, page in enumerate(reader.pages):
+                txt = (page.extract_text() or "").strip()
+                page_texts.append(txt)
         has_text_pages = 0
-        for idx, page in enumerate(reader.pages):
-            txt = (page.extract_text() or "").strip()
+        for txt in page_texts:
             if txt and len(txt) >= 20:
                 has_text_pages += 1
-            page_texts.append(txt)
 
         # Se almeno metà pagine hanno testo, usa estrazione classica (mantiene page break)
         if has_text_pages >= len(page_texts) / 2 and has_text_pages > 0:
