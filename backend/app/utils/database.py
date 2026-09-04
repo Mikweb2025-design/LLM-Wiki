@@ -226,6 +226,34 @@ def get_all_documents() -> List[Dict]:
     return [dict(row) for row in rows]
 
 
+def get_filenames_by_keywords(keywords: List[str], limit: int = 20) -> List[str]:
+    """Filtra filename via SQL LIKE (per chart intent) — evita di caricare tutti i documenti in Python.
+    keywords: lista OR (match se filename contiene una delle keyword, case-insensitive via LOWER).
+    Ritorna solo filename ordinati per created_at DESC."""
+    if not keywords:
+        return []
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    clauses = " OR ".join(["LOWER(filename) LIKE ?"] * len(keywords))
+    params = [f"%{k.lower()}%" for k in keywords]
+    try:
+        cursor.execute(
+            f"SELECT filename FROM documents WHERE {clauses} ORDER BY created_at DESC LIMIT ?",
+            (*params, limit),
+        )
+        return [r["filename"] for r in cursor.fetchall()]
+    except Exception:
+        return []
+
+
+def get_recent_filenames(limit: int = 20) -> List[str]:
+    """Ultimi N filename senza caricare righe complete (per chart fallback)."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT filename FROM documents ORDER BY created_at DESC LIMIT ?", (limit,))
+    return [r["filename"] for r in cursor.fetchall()]
+
+
 def get_documents_paginated(offset: int = 0, limit: int = 50) -> List[Dict]:
     """Lista documenti con paginazione"""
     conn = get_db_connection()

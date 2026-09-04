@@ -91,34 +91,27 @@ async def _try_build_chart(query: str, context) -> dict | None:
         is_spesa = any(k in low for k in ["ausgaben", "ausgabe", "spesa", "spese", "expenditure", "spent"])
         if is_all or is_guadagni or is_spesa or len(filenames) < 3:
             try:
-                from app.utils.database import get_all_documents
-                all_docs = get_all_documents() or []
+                from app.utils.database import get_filenames_by_keywords, get_recent_filenames
                 preset_hint, _, _ = _infer_preset_and_group(query)
-                # filtra per preset quando serve
+                # filtra via SQL LIKE (niente load di tutti i documenti in Python)
                 if preset_hint == "stipendi":
                     keywords = ["remuneration", "entgelt", "pay", "salary", "stipend", "gehalt", "lohn", "verdien"]
-                    filtered = [d for d in all_docs if any(k in d["filename"].lower() for k in keywords)]
-                    if len(filtered) >= 2:
-                        filenames = [d["filename"] for d in filtered[:20]]
-                    else:
-                        filenames = [d["filename"] for d in all_docs[:20]]
+                    filtered = get_filenames_by_keywords(keywords, limit=20)
+                    filenames = filtered if len(filtered) >= 2 else get_recent_filenames(20)
                 elif "benzina" in low or "carburante" in low:
                     # per benzina, cerca doc con benzina nel filename o prendi spese generiche
                     kw = ["benzina", "carburante", "diesel", "fuel", "tank", "kraftstoff", "benzin"]
-                    filtered = [d for d in all_docs if any(k in d["filename"].lower() for k in kw)]
-                    filenames = [d["filename"] for d in (filtered[:12] if filtered else all_docs[:12])]
+                    filtered = get_filenames_by_keywords(kw, limit=12)
+                    filenames = filtered if filtered else get_recent_filenames(12)
                 elif is_spesa and preset_hint == "spese":
                     # spese generiche (DE/IT/EN) → prova filtra per fattura/beleg/spesa, altrimenti prendi ampi set
                     kw = ["fattura", "invoice", "rechnung", "beleg", "quittung", "spesa", "spese", "ausgaben", "kauf", "einkauf"]
-                    filtered = [d for d in all_docs if any(k in d["filename"].lower() for k in kw)]
-                    if len(filtered) >= 2:
-                        filenames = [d["filename"] for d in filtered[:12]]
-                    else:
-                        filenames = [d["filename"] for d in all_docs[:12]]
+                    filtered = get_filenames_by_keywords(kw, limit=12)
+                    filenames = filtered if len(filtered) >= 2 else get_recent_filenames(12)
                 else:
                     # default: prendi tutti i doc se "tutti"
                     if is_all:
-                        filenames = [d["filename"] for d in all_docs[:20]]
+                        filenames = get_recent_filenames(20)
                 # deduplica mantenendo ordine
                 seen2 = set(); uniq = []
                 for f in filenames:

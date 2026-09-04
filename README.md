@@ -65,6 +65,22 @@
 
 ---
 
+## 🚀 Performance (what's new in v1.3 — 2026-09-04)
+
+| Area | Before | After | File |
+|---|---|---|---|
+| **Retrieval accuracy** | RRF tie (semantic vs keyword `1/61` = same score) | **post-RRF boost** exact-phrase ×1.8, filename ×1.4 + tie-break on `kw_score` | `vector_store.py` |
+| **Result diversity** | top-8 often same PDF | **MMR-lite**: max 2 chunks per doc | `vector_store.py` |
+| **Keyword search** | substring `O(N·L)` + IT-only stopwords | **token-set `O(1)`** + IT/EN/DE stopwords, substring fallback only ≥5 chars | `vector_store.py` |
+| **Search cache** | TTL 120s, 128 entries, raw key | **TTL 300s, 256 entries, normalized key** (punctuation/spaces) | `vector_store.py` |
+| **Chart doc filter** | `get_all_documents()` + Python filter | **SQL `LIKE`** via `get_filenames_by_keywords()` / `get_recent_filenames()` | `database.py`, `chat.py` |
+| **LLM context** | flat `1.8k`/doc | **score-weighted**: top-2 docs 2.2k, rest 1.4k (total 12k) | `llm_handler.py` |
+| **LLM params** | fixed temp 0.3 / 2048 tokens | **adaptive**: factual queries → temp 0.1 + 1024 tokens (faster, fewer hallucinations) | `llm_handler.py` |
+| **Electron server** | `url.parse` (deprecated), no cache/compression | **WHATWG URL + ETag/304 + gzip** (7500 → 68 B on test asset) | `electron/serve-build.js` |
+| **Electron app** | no single-instance, aggressive port kill, fragile splash, unbounded log, no menu | **single-instance**, own-backend-only port kill, safe splash, 5 MB log rotation, native menu + Help, `sandbox` + `preload.js`, window-bounds persistence, crash logging, `llm-wiki://` protocol, hardened runtime + entitlements | `electron/main.js`, `package.json` |
+
+Measured: `2000 chunks` keyword scan in ~3 ms, `main.c7482441.js` frontend, DMG/ZIP 101 MB arm64.
+
 ## 🚀 Performance (what's new in v1.2 — 2026-09-02)
 
 | Area | Before | After | File |

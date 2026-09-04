@@ -22,8 +22,8 @@ _collection_lock = threading.Lock()
 
 # Cache risultati ricerca — evita re-embedding e RRF per query ripetute (Dashboard Insights, chat rapide)
 _search_cache: Dict[str, tuple] = {}  # key -> (ts, result)
-_search_cache_ttl: float = 120.0
-_search_cache_max: int = 128
+_search_cache_ttl: float = 300.0
+_search_cache_max: int = 256
 _search_cache_lock = threading.Lock()
 
 # Cache query embedding — evita chiamata Ollama per stessa query
@@ -169,13 +169,18 @@ def _get_collection_snapshot() -> Dict:
     # ricarica fuori dal lock (può essere lento)
     collection = get_vector_store()._collection
     data = collection.get(include=['documents', 'metadatas'])
-    # precomputa lowercase una volta sola
+    # precomputa lowercase + token-set una volta sola (loop query diventa O(1) per parola)
     docs = data.get('documents') or []
     metas = data.get('metadatas') or []
+    docs_lower = [d.lower() if d else "" for d in docs]
+    import re as _re
+    _tok_re = _re.compile(r"[a-zà-öø-ÿ0-9]{2,}", _re.I)
     snapshot = {
         "documents": docs,
         "metadatas": metas,
-        "documents_lower": [d.lower() if d else "" for d in docs],
+        "documents_lower": docs_lower,
+        "token_sets": [set(_tok_re.findall(dl)) for dl in docs_lower],
+        "filenames_lower": [(m.get("filename") or "").lower() for m in metas],
     }
     with _collection_lock:
         _collection_cache = snapshot
@@ -193,8 +198,10 @@ def search_documents(query: str, n_results: int = 5, score_threshold: float = No
     - fusion via Reciprocal Rank Fusion invece di naive concat
     """
     import math
-    # cache check (query normalizzata)
-    cache_key = f"{query.lower().strip()}::{n_results}::{score_threshold}"
+    import re as _re2
+    # cache key normalizzata: lower + collapse spazi/punteggiatura -> più hit, meno re-embedding
+    norm_q = _re2.sub(r"\s+", " ", _re2.sub(r"[^\w\sà-öø-ÿ]", " ", query.lower())).strip()
+    cache_key = f"{norm_q}::{n_results}::{score_threshold}"
     cached = _search_cache_get(cache_key)
     if cached is not None:
         return cached
@@ -209,36 +216,61 @@ def search_documents(query: str, n_results: int = 5, score_threshold: float = No
         print(f"[WARN] semantic search failed: {e}")
         semantic_results = []
 
-    # 2. Keyword search (TF-ish con pruning)
+    # 2. Keyword search (TF-IDF su token-set + boost frase esatta/filename)
     snapshot = _get_collection_snapshot()
-    query_words = [w for w in query.lower().split() if len(w) >= 2]
-    # rimuovi stopwords italiane comuni per ridurre falsi positivi
-    stopwords = {"della", "delle", "degli", "nella", "nello", "dalla", "dallo", "come", "sono", "questa", "questo", "quella", "quello", "dalla", "per", "con", "una", "uno", "del", "dei", "che", "non", "piu", "anche", "solo", "dove", "quando"}
+    # compat: snapshot vecchi senza token_sets (hot-reload) -> ricostruisci al volo
+    if not snapshot.get("token_sets") or len(snapshot.get("token_sets", [])) != len(snapshot["documents"]):
+        import re as _re3
+        _tok = _re3.compile(r"[a-zà-öø-ÿ0-9]{2,}", _re3.I)
+        snapshot["token_sets"] = [set(_tok.findall(dl)) for dl in snapshot["documents_lower"]]
+    if not snapshot.get("filenames_lower") or len(snapshot.get("filenames_lower", [])) != len(snapshot["documents"]):
+        snapshot["filenames_lower"] = [(m.get("filename") or "").lower() for m in snapshot["metadatas"]]
+    query_words = [w for w in norm_q.split() if len(w) >= 2]
+    # stopwords IT/EN/DE per ridurre falsi positivi
+    stopwords = {"della", "delle", "degli", "nella", "nello", "dalla", "dallo", "come", "sono", "questa", "questo", "quella", "quello", "per", "con", "una", "uno", "del", "dei", "che", "non", "piu", "anche", "solo", "dove", "quando", "cosa", "quale", "quali", "the", "and", "for", "with", "from", "that", "this", "have", "has", "are", "was", "were", "what", "when", "where", "which", "und", "der", "die", "das", "eine", "einer", "mit", "von", "ist", "sind", "nicht", "auch", "nur", "eine"}
     query_words = [w for w in query_words if w not in stopwords]
     if not query_words:
-        query_words = [w for w in query.lower().split() if len(w) >= 2]
+        query_words = [w for w in norm_q.split() if len(w) >= 2]
 
     keyword_results = []
-    # IDF approx: parole rare = peso maggiore
+    # IDF approx: parole rare = peso maggiore (su token-set O(1), non substring)
     doc_count = max(len(snapshot["documents"]), 1)
     word_doc_freq = {}
+    tok_sets_all = snapshot.get("token_sets", [])
     # calcola doc freq solo per query words (non per tutto il vocabolario)
     for w in query_words:
-        cnt = sum(1 for dl in snapshot["documents_lower"] if w in dl)
+        if len(w) >= 5:
+            cnt = sum(1 for dl in snapshot["documents_lower"] if w in dl)
+        else:
+            cnt = sum(1 for ts in tok_sets_all if w in ts)
         word_doc_freq[w] = cnt
 
-    for doc, doc_lower, meta in zip(snapshot["documents"], snapshot["documents_lower"], snapshot["metadatas"]):
+    for doc, doc_lower, meta, tok_set, fn_lower in zip(snapshot["documents"], snapshot["documents_lower"], snapshot["metadatas"], snapshot.get("token_sets", []), snapshot.get("filenames_lower", [])):
         if not doc_lower:
             continue
         score = 0.0
         for w in query_words:
-            if w in doc_lower:
-                # TF-IDF semplificato: log(N/df) * count
+            if w in tok_set:
+                # TF-IDF semplificato: log(N/df) * count (count via substring, membership via set)
                 tf = doc_lower.count(w)
                 df = max(word_doc_freq.get(w, 1), 1)
                 idf = math.log(doc_count / df + 1)
                 score += math.log(1 + tf) * idf
+            elif len(w) >= 5 and w in doc_lower:
+                # substring fallback solo per parole lunghe (composti, codici)
+                tf = doc_lower.count(w)
+                df = max(word_doc_freq.get(w, 1), 1)
+                idf = math.log(doc_count / df + 1)
+                score += math.log(1 + tf) * idf * 0.5
         if score > 0:
+            # boost 1: frase esatta della query nel chunk -> x2 (risposte precise)
+            if len(norm_q) >= 8 and norm_q in doc_lower:
+                score *= 2.0
+            # boost 2: parola query nel filename -> x1.5 (es. "benzina" in scontrino-benzina.pdf)
+            for w in query_words:
+                if len(w) >= 4 and w in (fn_lower or ""):
+                    score *= 1.5
+                    break
             keyword_results.append({"content": doc, "score": score, "metadata": meta})
 
     # ordina e pruna keyword a top 500 per non esplodere
@@ -272,12 +304,47 @@ def search_documents(query: str, n_results: int = 5, score_threshold: float = No
             entry["rrf"] += 1.0 / (RRF_K + rank)
             entry["kw_score"] = r["score"]
 
-    # ordina per RRF decrescente
-    combined = sorted(rrf_scores.values(), key=lambda x: x["rrf"], reverse=True)
+    # post-RRF boost: la RRF da sola pareggia (1/61 vs 1/61) quando semantico e keyword
+    # indicano doc diversi. Applichiamo boost moltiplicativo sulla RRF finale:
+    # - frase esatta nel chunk -> x1.8
+    # - parola query nel filename -> x1.4
+    # - tie-break: a parità RRF vince chi ha kw_score (match lessicale preciso)
+    for entry in rrf_scores.values():
+        content_lower = (entry.get("content") or "").lower()
+        fn = ((entry.get("metadata") or {}).get("filename") or "").lower()
+        if len(norm_q) >= 8 and norm_q in content_lower:
+            entry["rrf"] *= 1.8
+        for w in query_words:
+            if len(w) >= 4 and w in fn:
+                entry["rrf"] *= 1.4
+                break
+
+    # ordina per RRF decrescente, tie-break su kw_score (precisione lessicale)
+    combined = sorted(rrf_scores.values(), key=lambda x: (x["rrf"], x.get("kw_score", 0)), reverse=True)
 
     # threshold opzionale (filtra risultati troppo deboli)
     if score_threshold is not None:
         combined = [c for c in combined if c["rrf"] >= score_threshold]
+
+    # MMR-lite: max 2 chunk per stesso doc -> più diversità, meno ridondanza
+    # (i top-8 tutti dallo stesso PDF sono il caso peggiore per accuratezza)
+    seen_per_doc: dict = {}
+    diversified = []
+    overflow = []
+    for c in combined:
+        doc_id = (c.get("metadata") or {}).get("doc_id") or (c.get("metadata") or {}).get("filename", "")
+        cnt = seen_per_doc.get(doc_id, 0)
+        if cnt < 2:
+            diversified.append(c)
+            seen_per_doc[doc_id] = cnt + 1
+        else:
+            overflow.append(c)
+        if len(diversified) >= n_results * 2:
+            break
+    # se la diversificazione ha scartato troppo, riempi con overflow
+    if len(diversified) < n_results:
+        diversified.extend(overflow[: n_results - len(diversified)])
+    combined = diversified
 
     # normalizza output come prima: lista di dict con content/score/metadata
     result = []

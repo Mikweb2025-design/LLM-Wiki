@@ -2,6 +2,9 @@
   "name": "llm-wiki-desktop",
   "version": "1.0.0",
   "description": "LLM Wiki - AI Knowledge Base Desktop",
+  "author": "LLM Wiki",
+  "license": "MIT",
+  "homepage": "https://github.com/Mikweb2025-design/LLM-Wiki",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -14,14 +17,33 @@
   "build": {
     "appId": "com.llmwiki.app",
     "productName": "LLM Wiki",
+    "copyright": "Copyright © 2026 LLM Wiki",
+    "protocols": [
+      {
+        "name": "LLM Wiki",
+        "schemes": ["llm-wiki"]
+      }
+    ],
     "directories": {
       "output": "dist"
     },
+    "files": [
+      "main.js",
+      "preload.js",
+      "serve-build.js",
+      "package.json"
+    ],
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "icon.png",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist",
+      "minimumSystemVersion": "11.0",
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ]
     },
     "dmg": {
@@ -30,10 +52,6 @@
         { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
       ]
     },
-    "files": [
-      "main.js",
-      "serve-build.js"
-    ],
     "extraResources": [
       {
         "from": "../frontend-build",

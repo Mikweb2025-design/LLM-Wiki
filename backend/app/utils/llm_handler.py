@@ -39,7 +39,8 @@ def _chat_cache_set(key: str, value: str):
 
 
 def _build_context_text(context: List[Dict], max_total_chars: int = 12000, per_doc_chars: int = 1800) -> str:
-    """Costruisce context troncato con Citations 2.0: include p. N quando disponibile."""
+    """Costruisce context troncato con Citations 2.0: include p. N quando disponibile.
+    Budget pesato per score: i primi 2 doc (più rilevanti) ottengono più caratteri."""
     if not context:
         return "Nessun documento trovato nel contesto."
     parts = []
@@ -52,7 +53,10 @@ def _build_context_text(context: List[Dict], max_total_chars: int = 12000, per_d
         content = (doc.get('content') or '').strip()
         if not content:
             continue
-        chunk = content[:per_doc_chars]
+        # top-2 docs: budget maggiorato (2200), resto 1400 — totale resta ~12k
+        budget = 2200 if i <= 2 else 1400
+        budget = min(budget, per_doc_chars + 400)
+        chunk = content[:budget]
         entry = f"[Documento {i}] {filename}{page_str} (score:{doc.get('score','?')}):\n{chunk}"
         if total + len(entry) > max_total_chars:
             remaining = max_total_chars - total
@@ -138,6 +142,14 @@ def chat_with_llm(query: str, context: List[Dict], model: str = None, history: L
     ctx_label = {"it": "Contesto", "en": "Context", "de": "Kontext"}.get((lang or "it")[:2].lower(), "Contesto")
     messages.append({"role": "user", "content": f"{ctx_label}:\n{context_text}\n\n{q_label}: {query}"})
 
+    # Parametri adattivi: query fattuali brevi -> temp bassa + meno token (veloce + preciso)
+    q_low = (query or "").lower()
+    is_factual = len(query or "") < 90 or any(
+        k in q_low for k in ["chi ", "cosa ", "quando ", "dove ", "quanto ", "quale ", "what ", "who ", "when ", "where ", "how much", "wer ", "was ", "wann ", "wo ", "wie viel", "importo", "data ", "numero"]
+    )
+    temperature = 0.1 if is_factual else 0.3
+    max_tokens = 1024 if (is_factual and len(context_text) < 6000) else 2048
+
     # Prima IONOS (cloud)
     if USE_IONOS:
         try:
@@ -150,8 +162,8 @@ def chat_with_llm(query: str, context: List[Dict], model: str = None, history: L
                 json={
                     "model": IONOS_MODEL,
                     "messages": messages,
-                    "temperature": 0.3,
-                    "max_tokens": 2048,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
                 },
                 timeout=120,
             )
@@ -170,7 +182,7 @@ def chat_with_llm(query: str, context: List[Dict], model: str = None, history: L
         response = ollama.chat(
             model=use_model,
             messages=messages,
-            options={"temperature": 0.3, "num_ctx": 8192}
+            options={"temperature": temperature, "num_ctx": 8192}
         )
         ans = response["message"]["content"]
         if use_cache and cache_key:
@@ -201,13 +213,15 @@ def chat_with_llm_stream(query: str, context: List[Dict], model: str = None, his
     ctx_label = {"it": "Contesto", "en": "Context", "de": "Kontext"}.get((lang or "it")[:2].lower(), "Contesto")
     messages.append({"role": "user", "content": f"{ctx_label}:\n{context_text}\n\n{q_label}: {query}"})
 
-    # Prova IONOS streaming
+    # Prova IONOS streaming (stessi parametri adattivi del non-streaming)
     if USE_IONOS:
         try:
+            q_low_s = (query or "").lower()
+            is_fact_s = len(query or "") < 90
             resp = _session.post(
                 f"{IONOS_BASE_URL}/chat/completions",
                 headers={"Authorization": f"Bearer {IONOS_API_KEY}", "Content-Type": "application/json"},
-                json={"model": IONOS_MODEL, "messages": messages, "temperature": 0.3, "max_tokens": 2048, "stream": True},
+                json={"model": IONOS_MODEL, "messages": messages, "temperature": 0.1 if is_fact_s else 0.3, "max_tokens": 1024 if (is_fact_s and len(context_text) < 6000) else 2048, "stream": True},
                 timeout=120, stream=True,
             )
             if resp.status_code == 200:

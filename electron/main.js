@@ -1,14 +1,27 @@
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn, execSync } = require('child_process');
 const http = require('http');
 const serveBuild = require('./serve-build');
 
+// Single-instance: evita doppio backend / doppia porta 8000 da Finder
 let mainWindow;
 let splashWindow;
 let backendProcess;
 let frontendServer;
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+      mainWindow.show();
+    }
+  });
+}
 
 const BACKEND_PORT = 8000;
 const FRONTEND_PORT = 3456;
@@ -194,11 +207,7 @@ function ensureVenv(pythonCmd, backendPath, log) {
   log('[MAIN] Creating venv and installing dependencies (first launch may take a few minutes)...');
 
   // Send splash progress
-  if (splashWindow && !splashWindow.isDestroyed()) {
-    splashWindow.webContents.executeJavaScript(
-      `document.querySelector('p').textContent = 'Installing dependencies (first launch only)...'`
-    ).catch(() => {});
-  }
+  setSplashStatus('Installing dependencies (first launch only)...');
 
   const { execSync } = require('child_process');
 
@@ -237,6 +246,19 @@ function ensureVenv(pythonCmd, backendPath, log) {
 // Kill stale process on port
 // ---------------------------------------------------------------------------
 function killPortProcess(port, log) {
+  // Uccide solo processi nostri (uvicorn app.main / llm-wiki), mai servizi estranei sulla 8000
+  function isOwnBackend(pid) {
+    try {
+      const cmd = execSync(`ps -p ${pid} -o command=`, {
+        encoding: 'utf8',
+        timeout: 3000,
+        env: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin' },
+      }).trim();
+      return /uvicorn|app\.main|llm-wiki/i.test(cmd);
+    } catch {
+      return false;
+    }
+  }
   try {
     const output = execSync(`lsof -ti :${port}`, {
       encoding: 'utf8',
@@ -246,7 +268,12 @@ function killPortProcess(port, log) {
     if (output) {
       const pids = output.split('\n').filter(Boolean);
       for (const pid of pids) {
-        log(`[MAIN] Killing stale process PID ${pid} on port ${port}`);
+        if (String(pid).trim() === String(process.pid)) continue;
+        if (!isOwnBackend(pid)) {
+          log(`[MAIN] Port ${port} occupata da processo esterno PID ${pid} — non la uccido (chiudi l'altro servizio o cambia porta)`);
+          continue;
+        }
+        log(`[MAIN] Killing stale backend PID ${pid} on port ${port}`);
         try {
           execSync(`kill -9 ${pid}`, {
             encoding: 'utf8',
@@ -273,6 +300,31 @@ function getLogPath() {
   return path.join(app.getPath('userData'), 'backend.log');
 }
 
+function rotateLogIfNeeded(logPath, maxBytes = 5 * 1024 * 1024) {
+  try {
+    const st = fs.statSync(logPath);
+    if (st.size > maxBytes) {
+      const oldPath = `${logPath}.old`;
+      try { fs.rmSync(oldPath, { force: true }); } catch {}
+      fs.renameSync(logPath, oldPath);
+    }
+  } catch {
+    // file mancante -> niente rotazione
+  }
+}
+
+function setSplashStatus(text) {
+  if (!splashWindow || splashWindow.isDestroyed()) return;
+  // Passa il testo come argomento (niente interpolazione JS -> niente break su quote/backtick)
+  splashWindow.webContents
+    .executeJavaScript(
+      '(() => { const el = document.querySelector("p"); if (el) el.textContent = arguments[0]; })(' +
+        JSON.stringify(String(text).slice(0, 120)) +
+        ')'
+    )
+    .catch(() => {});
+}
+
 function startBackend() {
   const sourcePath = getBackendPath();
   const backendPath = ensureWritableBackend(sourcePath);
@@ -290,9 +342,10 @@ function startBackend() {
   console.log(`[MAIN] Python: ${basePython}`);
   console.log(`[MAIN] Backend path: ${backendPath}`);
 
-  // Write logs to file so we can debug Finder launches
+  // Write logs to file so we can debug Finder launches (con rotazione 5MB)
   const logPath = getLogPath();
-  try { backendLogFile = fs.createWriteStream(logPath); } catch {}
+  rotateLogIfNeeded(logPath);
+  try { backendLogFile = fs.createWriteStream(logPath, { flags: 'a' }); } catch {}
 
   function log(msg) {
     const line = `[${new Date().toISOString()}] ${msg}\n`;
@@ -331,24 +384,36 @@ function startBackend() {
     const msg = d.toString().trim();
     console.error(`[BACKEND] ${msg}`);
     log(`[BACKEND-ERR] ${msg}`);
-    // Update splash with error info
-    if (splashWindow && !splashWindow.isDestroyed()) {
-      splashWindow.webContents.executeJavaScript(
-        `document.querySelector('p').textContent = '${msg.substring(0, 80).replace(/'/g, "\\'")}'`
-      ).catch(() => {});
-    }
+    // Update splash with error info (safe: niente interpolazione)
+    setSplashStatus(msg.substring(0, 120));
   });
 
   backendProcess.on('error', (err) => {
     console.error('[BACKEND] spawn error:', err);
+    try {
+      const logPath = getLogPath();
+      fs.appendFileSync(logPath, `[${new Date().toISOString()}] [BACKEND-SPAWN-ERROR] ${err.stack || err.message}\n`);
+    } catch {}
     dialog.showErrorBox('Errore Backend', `Impossibile avviare Python:\n${err.message}`);
     app.quit();
   });
 
+  let backendReady = false;
+  // pollHealth imposta backendReady=true via callback wrapper sotto
+  backendProcess._markReady = () => { backendReady = true; };
   backendProcess.on('exit', (code) => {
     log(`[BACKEND] exited with code ${code}`);
     console.log(`[BACKEND] exited with code ${code}`);
     if (code !== null && code !== 0) {
+      // Se il backend muore DOPO il ready (app in uso): log + dialog, ma non quit
+      // automatico — l'utente potrebbe voler salvare chat / copiare il log.
+      if (backendReady && mainWindow && !mainWindow.isDestroyed()) {
+        dialog.showErrorBox(
+          'Backend terminato',
+          `Il backend si è fermato (codice ${code}).\nL'interfaccia resta aperta in sola lettura.\nLog: ${getLogPath()}\n\nRiavvia l'app per ripristinare chat e ricerca.`
+        );
+        return;
+      }
       const msg = `Il backend si è fermato (codice ${code}).\nLog: ${getLogPath()}`;
       if (mainWindow && !mainWindow.isDestroyed()) {
         dialog.showErrorBox('Backend crash', msg);
@@ -493,26 +558,146 @@ function createSplash() {
 // ---------------------------------------------------------------------------
 // Main window
 // ---------------------------------------------------------------------------
+// Window bounds persistence
+// ---------------------------------------------------------------------------
+function getBoundsPath() {
+  return path.join(app.getPath('userData'), 'window-bounds.json');
+}
+
+function loadBounds() {
+  try {
+    const raw = fs.readFileSync(getBoundsPath(), 'utf8');
+    const b = JSON.parse(raw);
+    if (typeof b.width === 'number' && typeof b.height === 'number') return b;
+  } catch {}
+  return null;
+}
+
+function saveBounds(bounds) {
+  try {
+    fs.writeFileSync(getBoundsPath(), JSON.stringify(bounds));
+  } catch {}
+}
+
 let mainWindowCreated = false;
+
+function createAppMenu() {
+  const isMac = process.platform === 'darwin';
+  try {
+    app.setAboutPanelOptions({
+      applicationName: 'LLM Wiki',
+      applicationVersion: app.getVersion(),
+      version: app.getVersion(),
+      copyright: 'Copyright © 2026 LLM Wiki (MIT)',
+      website: 'https://github.com/Mikweb2025-design/LLM-Wiki',
+    });
+  } catch {}
+  const template = [
+    ...(isMac ? [{ role: 'appMenu' }] : []),
+    {
+      label: 'File',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        isMac ? { role: 'close' } : { role: 'quit' },
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    {
+      label: 'Window',
+      submenu: [{ role: 'minimize' }, { role: 'zoom' }, ...(isMac ? [{ role: 'front' }] : [{ role: 'close' }])],
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Apri log backend',
+          click: async () => {
+            try {
+              const { shell } = require('electron');
+              await shell.openPath(getLogPath());
+            } catch {}
+          },
+        },
+        {
+          label: 'Controlla backend (health)',
+          click: async () => {
+            try {
+              const { shell } = require('electron');
+              await shell.openExternal(`http://127.0.0.1:${BACKEND_PORT}/health/full`);
+            } catch {}
+          },
+        },
+      ],
+    },
+  ];
+  try {
+    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  } catch {}
+}
 
 function createMainWindow() {
   if (mainWindowCreated || (mainWindow && !mainWindow.isDestroyed())) return;
   mainWindowCreated = true;
 
   const startUrl = process.env.ELECTRON_START_URL || `http://127.0.0.1:${FRONTEND_PORT}`;
+  const saved = loadBounds();
 
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    width: saved?.width || 1400,
+    height: saved?.height || 900,
+    x: saved?.x,
+    y: saved?.y,
     minWidth: 800,
     minHeight: 600,
     title: 'LLM Wiki',
     show: false,
+    backgroundColor: '#0f172a',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
+      enableRemoteModule: false,
+      // preload.js opzionale: se presente, espone API sicure via contextBridge
+      preload: fs.existsSync(path.join(__dirname, 'preload.js'))
+        ? path.join(__dirname, 'preload.js')
+        : undefined,
     },
   });
+
+  // Blocca popup / window.open esterni: apri nel browser di sistema
+  try {
+    mainWindow.webContents.setWindowOpenHandler(({ url: openUrl }) => {
+      try {
+        const { shell } = require('electron');
+        if (openUrl.startsWith('http://') || openUrl.startsWith('https://')) shell.openExternal(openUrl);
+      } catch {}
+      return { action: 'deny' };
+    });
+  } catch {}
 
   mainWindow.loadURL(startUrl);
 
@@ -521,7 +706,40 @@ function createMainWindow() {
       splashWindow.close();
       splashWindow = null;
     }
+    // Ripristina maximized/fullscreen salvati
+    try {
+      const saved = loadBounds();
+      if (saved?.isMaximized) mainWindow.maximize();
+    } catch {}
     mainWindow.show();
+  });
+
+  // Salva bounds con debounce (resize/move) + su close
+  let saveTimer = null;
+  const scheduleSave = () => {
+    try {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (mainWindow.isMinimized()) return;
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        try {
+          const b = mainWindow.getBounds();
+          saveBounds({ ...b, isMaximized: mainWindow.isMaximized() });
+        } catch {}
+      }, 400);
+      if (saveTimer.unref) saveTimer.unref();
+    } catch {}
+  };
+  mainWindow.on('resize', scheduleSave);
+  mainWindow.on('move', scheduleSave);
+
+  mainWindow.on('close', () => {
+    try {
+      if (!mainWindow.isMinimized()) {
+        const b = mainWindow.getBounds();
+        saveBounds({ ...b, isMaximized: mainWindow.isMaximized() });
+      }
+    } catch {}
   });
 
   mainWindow.on('closed', () => {
@@ -529,8 +747,17 @@ function createMainWindow() {
     mainWindowCreated = false;
   });
 
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    try {
+      const logPath = getLogPath();
+      fs.appendFileSync(logPath, `[${new Date().toISOString()}] [RENDER-GONE] ${details?.reason} exitCode=${details?.exitCode}\n`);
+    } catch {}
+    console.error('[MAIN] render-process-gone:', details);
+  });
+
   mainWindow.webContents.on('did-fail-load', (_e, code, desc) => {
     console.error(`[MAIN] load failed: ${code} ${desc}`);
+    setSplashStatus(`Errore caricamento frontend (${code}). Backend log in userData/backend.log`);
   });
 }
 
@@ -539,13 +766,34 @@ function createMainWindow() {
 // ---------------------------------------------------------------------------
 let appReady = false;
 
+process.on('uncaughtException', (err) => {
+  console.error('[MAIN] uncaughtException:', err);
+  try {
+    const p = path.join(app.getPath('userData'), 'backend.log');
+    fs.appendFileSync(p, `[${new Date().toISOString()}] [MAIN-UNCAUGHT] ${err?.stack || err}\n`);
+  } catch {}
+});
+
 app.whenReady().then(() => {
   appReady = true;
+  try {
+    app.on('child-process-gone', (_e, details) => {
+      console.error('[MAIN] child-process-gone:', details);
+      try {
+        const p = path.join(app.getPath('userData'), 'backend.log');
+        fs.appendFileSync(p, `[${new Date().toISOString()}] [CHILD-GONE] ${details?.type} reason=${details?.reason} exitCode=${details?.exitCode}\n`);
+      } catch {}
+    });
+  } catch {}
+  createAppMenu();
   createSplash();
   startFrontendServer();
   startBackend();
 
   pollHealth(() => {
+    try {
+      if (backendProcess && backendProcess._markReady) backendProcess._markReady();
+    } catch {}
     createMainWindow();
   });
 
@@ -560,6 +808,10 @@ app.whenReady().then(() => {
 });
 
 function cleanup() {
+  try {
+    if (backendLogFile) backendLogFile.end();
+  } catch {}
+  backendLogFile = null;
   if (backendProcess && !backendProcess.killed) {
     try { backendProcess.kill('SIGTERM'); } catch {}
     // Force kill after 2s if still alive
@@ -567,10 +819,11 @@ function cleanup() {
       if (backendProcess && !backendProcess.killed) {
         try { backendProcess.kill('SIGKILL'); } catch {}
       }
-    }, 2000);
+    }, 2000).unref?.();
   }
   if (frontendServer) {
     try { frontendServer.close(); } catch {}
+    frontendServer = null;
   }
 }
 
