@@ -1,0 +1,27 @@
+name: llm-wiki
+
+services:
+  llm-wiki-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: llm-wiki-backend
+    env_file:
+      - backend/.env
+    environment:
+      - PORT=8010
+      - HOST=0.0.0.0
+    ports:
+      # solo loopback: l'esterno passa da nginx /dok/api/ -> 127.0.0.1:8010
+      - "127.0.0.1:8010:8010"
+    volumes:
+      # dati persistenti (SQLite, cache HiDrive/WebDAV, documenti, Chroma)
+      - ./backend/data:/app/data
+      - ./backend/chroma_db:/app/chroma_db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s

@@ -1032,3 +1032,177 @@ async def auto_tag_single(filename: str):
     tags = auto_tag_document(filename, doc.get("file_path"))
     from app.utils.database import get_document_tags
     return {"filename": filename, "tags": get_document_tags(filename)}
+
+
+# ---------------------------------------------------------------------------
+# HiDrive (REST API via OAuth2, niente WebDAV) — vedi app/utils/hidrive_client.py
+# ---------------------------------------------------------------------------
+
+@router.get("/hidrive/auth-url")
+async def hidrive_auth_url(
+    redirect_uri: str = "https://migration.mikweb.eu/api/oauth/callback",
+    scope: str = "admin,rw",
+):
+    """URL di authorize per il primo login manuale (una tantum).
+
+    Stessa app OAuth di Clumoove: apri l'URL nel browser, autorizza, copia il
+    `code` dall'URL di redirect e incollalo in POST /api/documents/hidrive/exchange.
+    Da lì in poi solo refresh automatico.
+    """
+    from app.utils import hidrive_client as hd
+    ok, msg = hd.is_configured()
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"authorize_url": hd.authorize_url(redirect_uri=redirect_uri, scope=scope)}
+
+
+@router.post("/hidrive/exchange")
+async def hidrive_exchange(payload: dict):
+    """Scambia authorization_code -> salva refresh_token (una tantum)."""
+    from app.utils import hidrive_client as hd
+    code = (payload.get("code") or "").strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="code mancante")
+    redirect_uri = (payload.get("redirect_uri") or "https://migration.mikweb.eu/api/oauth/callback").strip()
+    ok, msg = hd.exchange_code(code, redirect_uri=redirect_uri)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    log_activity("hidrive_auth", details=msg)
+    return {"status": "ok", "message": msg}
+
+
+@router.get("/hidrive/status")
+async def hidrive_status():
+    """Stato configurazione HiDrive + verifica token live (mai segreti in risposta)."""
+    from app.utils import hidrive_client as hd
+    st = hd.hidrive_status()
+    if st["configured"] and st["has_refresh_token"]:
+        ok, msg = hd.check_connection()
+        st["connected"] = ok
+        st["connection_message"] = msg
+    else:
+        st["connected"] = False
+        st["connection_message"] = st.get("config_error") or "Refresh token mancante: completa il primo login"
+    return st
+
+
+@router.post("/scan-hidrive")
+async def scan_hidrive_endpoint(payload: dict):
+    """Scansiona un path HiDrive: lista via REST, scarica nuovi/modificati
+    (confronto mtime come la cache 30min esistente) in cache locale, poi stessa
+    pipeline di process_document/add_document_to_store/auto_tag dello scan locale.
+    Body: {path?, max_files?}"""
+    from app.config import DATA_DIR
+    from app.utils import hidrive_client as hd
+
+    ok_cfg, cfg_err = hd.is_configured()
+    if not ok_cfg:
+        raise HTTPException(status_code=400, detail=cfg_err)
+    if not hd._seeded_refresh_token():
+        raise HTTPException(
+            status_code=400,
+            detail="Refresh token HiDrive mancante: apri GET /api/documents/hidrive/auth-url e completa POST /hidrive/exchange",
+        )
+
+    hi_path = (payload.get("path") or os.getenv("HIDRIVE_DEFAULT_PATH", "/") or "/").strip() or "/"
+    try:
+        max_files = max(1, int(payload.get("max_files") or 100))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="max_files non valido")
+
+    ok, err, items = hd.list_dir(hi_path)
+    if not ok:
+        raise HTTPException(status_code=502, detail=f"HiDrive list_dir fallita: {err}")
+    files = [it for it in items if not it["is_dir"] and hd.is_supported_file(it["name"])]
+    files = files[:max_files]
+
+    with _scan_lock:
+        if _scan_status["running"]:
+            raise HTTPException(status_code=409, detail="Scansione già in corso")
+
+    def _safe_segment(s: str) -> str:
+        return "".join(c if (c.isalnum() or c in ("-", "_", ".")) else "_" for c in s.strip("/")) or "root"
+
+    def _do_scan():
+        cache_dir = DATA_DIR / "hidrive_cache" / _safe_segment(hi_path)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        new_files = 0
+        updated = 0
+        skipped = 0
+        errors = []
+        with _scan_lock:
+            _scan_status["total_files"] = len(files)
+        for it in files:
+            fname = it["name"]
+            remote_mtime = it["mtime"] or 0.0
+            dest = cache_dir / fname
+            try:
+                # skip: già indicizzato + copia locale aggiornata (mtime >= remoto)
+                if dest.exists() and is_document_indexed(fname):
+                    try:
+                        local_mtime = dest.stat().st_mtime
+                    except OSError:
+                        local_mtime = 0.0
+                    if remote_mtime and local_mtime >= remote_mtime - 1:
+                        skipped += 1
+                        with _scan_lock:
+                            _scan_status["processed"] += 1
+                        continue
+                # download by path (stesso metodo di Clumoove: GET /file?path=..)
+                ok_dl, dl_err = hd.download_file(it["path"], str(dest))
+                if not ok_dl:
+                    errors.append(f"{fname}: download fallito — {dl_err}")
+                    with _scan_lock:
+                        _scan_status["processed"] += 1
+                        _scan_status["errors"] = list(errors)
+                    continue
+                # allinea mtime locale al remoto: abilita skip futuri + cache processor
+                if remote_mtime:
+                    try:
+                        os.utime(dest, (remote_mtime, remote_mtime))
+                    except OSError:
+                        pass
+                # stessa pipeline dello scan locale: parse/tag/embedding
+                content = process_document(str(dest))
+                if not content or not content.strip():
+                    errors.append(f"{fname}: nessun testo estratto")
+                    with _scan_lock:
+                        _scan_status["processed"] += 1
+                        _scan_status["errors"] = list(errors)
+                    continue
+                metadata = get_document_metadata(str(dest))
+                doc_id = fname.replace(" ", "_").lower()
+                already = is_document_indexed(fname)
+                if already:
+                    remove_document_from_store(doc_id)
+                add_document_to_store(doc_id, content, metadata)
+                add_document(fname, str(dest), metadata["extension"], metadata["size_bytes"])
+                try:
+                    auto_tag_document(fname, str(dest))
+                except Exception:
+                    pass
+                if already:
+                    updated += 1
+                else:
+                    new_files += 1
+                log_activity("scan-hidrive", fname, f"{metadata['extension']} {metadata['size_bytes']}B")
+            except Exception as e:
+                errors.append(f"{fname}: {str(e)}")
+            with _scan_lock:
+                _scan_status["processed"] += 1
+                _scan_status["new_files"] = new_files
+                _scan_status["errors"] = list(errors)
+        log_activity("scan-hidrive", details=f"{hi_path}: +{new_files} ~{updated} skip:{skipped} su {len(files)}")
+        return {
+            "status": "completed",
+            "path": hi_path,
+            "scanned_files": len(files),
+            "new_files": new_files,
+            "updated": updated,
+            "skipped": skipped,
+            "errors": errors,
+            "message": f"HiDrive {hi_path}: {new_files} nuovi, {updated} aggiornati, {skipped} invariati.",
+        }
+
+    _run_scan_in_background(_do_scan, "scan-hidrive")
+    return {"status": "started", "message": "Scansione HiDrive avviata in background", "path": hi_path, "total_files": len(files)}

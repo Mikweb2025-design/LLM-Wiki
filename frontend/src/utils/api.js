@@ -62,6 +62,7 @@ export const documentsApi = {
   batchReindex: (filenames) => api.post('/api/documents/batch-reindex', { filenames }),
   scan: () => api.post('/api/documents/scan'),
   scanCustom: (directory) => api.post('/api/documents/scan-custom', { directory }),
+  scanHidrive: (path, max_files = 100) => api.post('/api/documents/scan-hidrive', { path, max_files }),
   scanStatus: () => api.get('/api/documents/scan-status'),
   count: () => api.get('/api/documents/count'),
   reindex: (filename) => api.post(`/api/documents/reindex/${encodeURIComponent(filename)}`),
@@ -122,6 +123,12 @@ export const webdavApi = {
   sync: (source_id, max_files = 100) => api.post('/api/webdav/sync', { source_id, max_files }),
   syncAll: (max_files = 100) => api.post('/api/webdav/sync', { all: true, max_files }),
   files: (source_id) => api.get('/api/webdav/files', { params: { source_id } }),
+};
+
+export const hidriveApi = {
+  status: () => api.get('/api/documents/hidrive/status'),
+  authUrl: (redirect_uri) => api.get('/api/documents/hidrive/auth-url', { params: { redirect_uri } }),
+  exchange: (code, redirect_uri) => api.post('/api/documents/hidrive/exchange', { code, redirect_uri }),
 };
 
 export default api;

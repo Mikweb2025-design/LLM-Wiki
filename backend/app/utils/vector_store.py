@@ -1,12 +1,23 @@
-"""Gestione Vector Store con ChromaDB e Ollama Embeddings"""
+"""Gestione Vector Store con ChromaDB e IONOS/Ollama Embeddings"""
 import threading
 import time
 from typing import List, Dict, Optional
 from langchain_chroma import Chroma
-from langchain_ollama import OllamaEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from app.config import CHROMA_DIR, OLLAMA_BASE_URL
+try:
+    from langchain_core.embeddings import Embeddings as _LCEmbeddings
+except ImportError:  # fallback per vecchie versioni langchain
+    from langchain.embeddings.base import Embeddings as _LCEmbeddings
+
+from app.config import (
+    CHROMA_DIR,
+    OLLAMA_BASE_URL,
+    IONOS_API_KEY,
+    IONOS_BASE_URL,
+    IONOS_EMBED_MODEL,
+    EMBED_PROVIDER,
+)
 
 # Singleton pattern for vector store
 _vector_store = None
@@ -32,15 +43,93 @@ _query_emb_ttl: float = 300.0
 _query_emb_lock = threading.Lock()
 
 
+class IonosEmbeddings(_LCEmbeddings):
+    """Embedding via IONOS AI Model Hub (endpoint OpenAI-compatibile).
+
+    Stessa interfaccia LangChain di OllamaEmbeddings, così il resto della
+    pipeline RAG/RRF/Chroma non cambia. Supporta batch nativo.
+    """
+
+    def __init__(
+        self,
+        model: str = None,
+        api_key: str = None,
+        base_url: str = None,
+        batch_size: int = 64,
+        timeout: float = 60.0,
+    ):
+        import requests as _rq
+
+        self.model = model or IONOS_EMBED_MODEL
+        self.api_key = api_key or IONOS_API_KEY
+        if not self.api_key:
+            raise ValueError("IONOS_API_KEY mancante: impossibile usare gli embedding IONOS.")
+        self.base_url = (base_url or IONOS_BASE_URL).rstrip("/")
+        self.batch_size = max(1, int(batch_size))
+        self.timeout = timeout
+        self._session = _rq.Session()
+
+    def _embed_batch(self, texts: List[str]) -> List[List[float]]:
+        resp = self._session.post(
+            f"{self.base_url}/embeddings",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json={"model": self.model, "input": texts},
+            timeout=self.timeout,
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"IONOS embeddings errore {resp.status_code}: {resp.text[:300]}")
+        data = resp.json().get("data", [])
+        # ordina per index (il server dovrebbe già farlo)
+        data.sort(key=lambda e: e.get("index", 0))
+        return [e["embedding"] for e in data]
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        out: List[List[float]] = []
+        clean = [(t if isinstance(t, str) else str(t or "")) for t in texts]
+        for start in range(0, len(clean), self.batch_size):
+            out.extend(self._embed_batch(clean[start:start + self.batch_size]))
+        return out
+
+    def embed_query(self, text: str) -> List[float]:
+        return self._embed_batch([text if isinstance(text, str) else str(text or "")])[0]
+
+
 def get_embeddings():
-    """Ottiene l'embedding model da Ollama (cached)"""
+    """Ottiene l'embedding model configurato (cached).
+
+    Provider selezionato da EMBED_PROVIDER ("ionos" di default se
+    IONOS_API_KEY è impostata, "ollama" legacy altrimenti). Stessa firma di
+    prima: nessun chiamante della pipeline RAG deve cambiare.
+    """
     global _embeddings
     if _embeddings is None:
-        _embeddings = OllamaEmbeddings(
-            model="nomic-embed-text",
-            base_url=OLLAMA_BASE_URL,
-        )
+        if EMBED_PROVIDER == "ionos":
+            _embeddings = IonosEmbeddings()
+        else:
+            from langchain_ollama import OllamaEmbeddings
+            _embeddings = OllamaEmbeddings(
+                model="nomic-embed-text",
+                base_url=OLLAMA_BASE_URL,
+            )
     return _embeddings
+
+
+def reset_embeddings_cache() -> None:
+    """Resetta i singleton embedding/vector-store (usato per re-indicizzazione
+    dopo cambio modello: i vettori vecchi hanno dimensione diversa)."""
+    global _embeddings, _vector_store, _collection_cache, _collection_cache_ts
+    with _collection_lock:
+        _collection_cache = None
+        _collection_cache_ts = 0.0
+    with _search_cache_lock:
+        _search_cache.clear()
+    with _query_emb_lock:
+        _query_emb_cache.clear()
+    _embeddings = None
+    _vector_store = None
 
 
 def get_vector_store():
@@ -110,7 +199,7 @@ def add_document_to_store(doc_id: str, content: str, metadata: Dict, batch_size:
     vector_store = get_vector_store()
     all_ids: List[str] = []
 
-    # batch per non saturare Ollama embeddings (che ha rate limit)
+    # batch per non saturare il provider embeddings (rate limit IONOS / Ollama)
     for start in range(0, len(chunks), batch_size):
         batch_chunks = chunks[start:start + batch_size]
         batch_meta = [
@@ -397,3 +486,32 @@ def get_store_stats() -> Dict:
     except Exception:
         count = 0
     return {"total_chunks": count}
+
+
+_embeddings_check_cache: Dict[str, float] = {"ts": 0.0, "ok": False}
+_EMBEDDINGS_CHECK_TTL = 60.0
+
+
+def check_embeddings_connection() -> bool:
+    """Verifica il provider embedding configurato (cached 60s).
+
+    IONOS: mini-embedding di prova su /v1/embeddings.
+    Ollama: GET /api/tags come prima.
+    """
+    now = time.monotonic()
+    if (now - _embeddings_check_cache["ts"]) < _EMBEDDINGS_CHECK_TTL:
+        return bool(_embeddings_check_cache["ok"])
+    ok = False
+    try:
+        if EMBED_PROVIDER == "ionos":
+            IonosEmbeddings().embed_query("health check")
+            ok = True
+        else:
+            import requests as _rq
+
+            r = _rq.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=3)
+            ok = r.status_code == 200
+    except Exception as e:
+        print(f"[WARN] embeddings ({EMBED_PROVIDER}) non disponibili: {e}")
+    _embeddings_check_cache.update(ts=now, ok=ok)
+    return ok

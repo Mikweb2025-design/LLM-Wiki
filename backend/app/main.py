@@ -13,7 +13,7 @@ from app.routers import chat, documents, voice, status, analytics, webdav
 
 
 # ---------------------------------------------------------------------------
-# Lifespan: pre-warm pesante (ChromaDB + Ollama embeddings) in background
+# Lifespan: pre-warm pesante (ChromaDB + embeddings configurati) in background
 # così il primo POST /api/chat non paga 3-5 secondi di cold start.
 # ---------------------------------------------------------------------------
 @asynccontextmanager
@@ -103,13 +103,14 @@ async def health_check():
 
 @app.get("/health/full")
 async def health_full():
-    """Diagnostica completa: ollama, ionos, chroma, db, uptime."""
+    """Diagnostica completa: embeddings configurati, ionos, ollama, chroma, db, uptime."""
+    from app.config import EMBED_PROVIDER
     from app.utils.llm_handler import (
         USE_IONOS,
         check_ionos_connection,
         check_ollama_connection,
     )
-    from app.utils.vector_store import get_store_stats
+    from app.utils.vector_store import get_store_stats, check_embeddings_connection
     from app.utils.database import get_document_count
 
     chroma_ok = True
@@ -129,12 +130,17 @@ async def health_full():
 
     ionos_ok = check_ionos_connection() if USE_IONOS else None
     ollama_ok = check_ollama_connection()
+    embeddings_ok = check_embeddings_connection()
 
-    overall = ollama_ok and chroma_ok and db_ok
+    # overall: conta il provider embedding configurato, non Ollama a prescindere
+    # (con EMBED_PROVIDER=ionos, Ollama spento non degrada il servizio RAG).
+    llm_ok = ionos_ok if USE_IONOS else ollama_ok
+    overall = bool(llm_ok) and embeddings_ok and chroma_ok and db_ok
     return {
         "status": "healthy" if overall else "degraded",
         "uptime_seconds": round(time.monotonic() - app.state.start_time, 2),
         "components": {
+            "embeddings": {"ok": embeddings_ok, "provider": EMBED_PROVIDER},
             "ollama": {"ok": ollama_ok},
             "ionos": {"ok": ionos_ok, "configured": USE_IONOS},
             "chroma": {"ok": chroma_ok, "total_chunks": chunks},

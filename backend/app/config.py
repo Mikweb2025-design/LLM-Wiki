@@ -35,6 +35,20 @@ else:
     IONOS_MODEL = os.getenv("IONOS_MODEL", "meta-llama/Llama-3.3-70B-Instruct")
 IONOS_BASE_URL = os.getenv("IONOS_BASE_URL", "https://openai.inference.de-txl.ionos.com/v1")
 
+# IONOS Embeddings (sostituisce Ollama nomic-embed-text; verificato su /v1/models).
+# Batch supportato: il client manda liste di stringhe in un'unica POST /embeddings.
+IONOS_EMBED_MODEL = os.getenv("IONOS_EMBED_MODEL", "BAAI/bge-m3")
+
+# Provider embedding: "ionos" (default quando IONOS_API_KEY è impostata) oppure
+# "ollama" (legacy nomic-embed-text). La dipendenza hard da Ollama per gli
+# embedding è rimossa: il fallback LLM locale via Ollama resta invariato.
+_EMBED_DEFAULT = "ionos" if IONOS_API_KEY else "ollama"
+EMBED_PROVIDER = os.getenv("EMBED_PROVIDER", _EMBED_DEFAULT).lower()
+if EMBED_PROVIDER not in ("ionos", "ollama"):
+    import warnings as _w
+    _w.warn(f"EMBED_PROVIDER non valido ({EMBED_PROVIDER!r}), uso {_EMBED_DEFAULT!r}.")
+    EMBED_PROVIDER = _EMBED_DEFAULT
+
 # IONOS Vision per OCR Hybrid (se non impostato usa stesso base ma modello vision)
 IONOS_VISION_MODEL = os.getenv("IONOS_VISION_MODEL", "meta-llama/Llama-3.2-11B-Vision-Instruct")
 # soglia OCR: se Tesseract produce <50 chars per pagina, prova IONOS Vision

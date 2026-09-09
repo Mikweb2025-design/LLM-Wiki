@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { documentsApi } from '../utils/api';
+import { documentsApi, API_URL } from '../utils/api';
 import { useI18n, t } from '../utils/i18n';
 
 function DocumentList({ showToast }) {
@@ -16,6 +16,8 @@ function DocumentList({ showToast }) {
   const [loadingContent, setLoadingContent] = useState(false);
   const [customDir, setCustomDir] = useState('');
   const [scanningCustom, setScanningCustom] = useState(false);
+  const [hidrivePath, setHidrivePath] = useState('/');
+  const [scanningHidrive, setScanningHidrive] = useState(false);
   const [showFolderHelper, setShowFolderHelper] = useState(false);
   const [previewFiles, setPreviewFiles] = useState([]);
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -34,7 +36,7 @@ function DocumentList({ showToast }) {
 
   const fetchTagsMap = async () => {
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/documents/tags/map');
+      const res = await fetch(`${API_URL}/api/documents/tags/map`);
       const data = await res.json();
       setTagsMap(data.map || {});
     } catch {}
@@ -56,7 +58,7 @@ function DocumentList({ showToast }) {
   const handleAutoTagAll = async () => {
     try {
       showToast?.(tr('documents.autoTagProgress'),'info');
-      const res = await fetch('http://127.0.0.1:8000/api/documents/auto-tag/all', { method: 'POST' });
+      const res = await fetch(`${API_URL}/api/documents/auto-tag/all`, { method: 'POST' });
       const data = await res.json();
       showToast?.(`${tr('documents.autoTagResult')} ${data.tagged} ${tr('documents.of').toLowerCase()} ${data.tagged + data.skipped}, ${data.skipped} ${tr('common.success').toLowerCase()}`, 'success');
       fetchTagsMap();
@@ -202,6 +204,24 @@ function DocumentList({ showToast }) {
         showToast(`${tr('common.error')}: ` + (error.response?.data?.detail || error.message), 'error');
       }
       setScanningCustom(false);
+    }
+  };
+
+  const handleScanHidrive = async () => {
+    setScanningHidrive(true);
+    try {
+      const response = await documentsApi.scanHidrive(hidrivePath || '/');
+      const data = response.data;
+      showToast(data.message || tr('documents.scanStarted'), 'info');
+      pollScanStatus(() => { setScanningHidrive(false); fetchDocuments(); });
+    } catch (error) {
+      console.error('Errore scansione HiDrive:', error);
+      if (error.response?.status === 409) {
+        showToast(tr('documents.scan409'), 'warning');
+      } else {
+        showToast(`${tr('common.error')}: ` + (error.response?.data?.detail || error.message), 'error');
+      }
+      setScanningHidrive(false);
     }
   };
 
@@ -867,6 +887,74 @@ function DocumentList({ showToast }) {
             onMouseLeave={(e) => { e.target.style.transform = 'none'; }}
           >
             {scanningCustom ? `⏳ ${tr('common.loading')}` : `🔍 ${tr('documents.customScanBtn')}`}
+          </button>
+        </div>
+      </div>
+
+      {/* HiDrive scan (REST API via OAuth2) */}
+      <div style={{
+        marginTop: '1rem',
+        padding: '1.25rem',
+        background: 'var(--bg-glass)',
+        borderRadius: '14px',
+        border: '1px solid var(--border-glass)',
+      }}>
+        <p style={{
+          fontSize: '0.9rem',
+          fontWeight: 500,
+          color: 'var(--text-primary)',
+          marginBottom: '0.75rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+        }}>
+          <span style={{ fontSize: '1rem' }}>☁️</span> {tr('documents.hidriveScanTitle')}
+        </p>
+        <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+          {tr('documents.hidriveScanHint')}
+        </p>
+
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <input
+            type="text"
+            value={hidrivePath}
+            onChange={(e) => setHidrivePath(e.target.value)}
+            placeholder={tr('documents.hidrivePathPlaceholder')}
+            style={{
+              flex: 1,
+              minWidth: '200px',
+              background: 'rgba(15, 15, 25, 0.8)',
+              border: '1px solid var(--border-glass)',
+              borderRadius: '10px',
+              padding: '0.65rem 1rem',
+              color: 'var(--text-primary)',
+              fontSize: '0.85rem',
+              fontFamily: 'var(--font-mono)',
+              outline: 'none',
+              transition: 'border-color 0.2s',
+            }}
+            onFocus={(e) => e.target.style.borderColor = 'var(--accent-purple)'}
+            onBlur={(e) => e.target.style.borderColor = 'var(--border-glass)'}
+            onKeyPress={(e) => e.key === 'Enter' && handleScanHidrive()}
+          />
+          <button
+            onClick={handleScanHidrive}
+            disabled={scanningHidrive || scanningCustom || scanning}
+            style={{
+              padding: '0.65rem 1.25rem',
+              background: scanningHidrive ? 'rgba(74, 158, 255, 0.05)' : 'linear-gradient(135deg, rgba(74, 158, 255, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)',
+              color: 'var(--accent-blue)',
+              border: '1px solid rgba(74, 158, 255, 0.2)',
+              borderRadius: '10px',
+              fontSize: '0.85rem',
+              cursor: (scanningHidrive || scanningCustom || scanning) ? 'not-allowed' : 'pointer',
+              transition: 'all 0.3s',
+              opacity: (scanningHidrive || scanningCustom || scanning) ? 0.5 : 1,
+            }}
+            onMouseEnter={(e) => { if (!scanningHidrive) { e.target.style.transform = 'translateY(-1px)'; } }}
+            onMouseLeave={(e) => { e.target.style.transform = 'none'; }}
+          >
+            {scanningHidrive ? `⏳ ${tr('common.loading')}` : `☁️ ${tr('documents.hidriveScanBtn')}`}
           </button>
         </div>
       </div>
