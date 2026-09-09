@@ -125,13 +125,13 @@ function WebDAVPanel({ showToast }) {
 
       {/* Connect form */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.6rem', marginBottom:'0.7rem' }}>
-        <input value={url} onChange={e=>setUrl(e.target.value)} placeholder={tr('folders.webdavUrlPlaceholder')} style={{ gridColumn:'1 / -1', background:'rgba(15,15,25,0.85)', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.6rem 0.9rem', color:'var(--text-primary)', fontSize:'0.82rem', fontFamily:'var(--font-mono)' }} />
-        <input value={username} onChange={e=>setUsername(e.target.value)} placeholder={tr('folders.webdavUser')} style={{ background:'rgba(15,15,25,0.85)', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.6rem 0.9rem', color:'var(--text-primary)', fontSize:'0.85rem' }} />
-        <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder={tr('folders.webdavPass')} style={{ background:'rgba(15,15,25,0.85)', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.6rem 0.9rem', color:'var(--text-primary)', fontSize:'0.85rem' }} />
+        <input value={url} onChange={e=>setUrl(e.target.value)} placeholder={tr('folders.webdavUrlPlaceholder')} style={{ gridColumn:'1 / -1', background:'#ffffff', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.6rem 0.9rem', color:'var(--text-primary)', fontSize:'0.82rem', fontFamily:'var(--font-mono)' }} />
+        <input value={username} onChange={e=>setUsername(e.target.value)} placeholder={tr('folders.webdavUser')} style={{ background:'#ffffff', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.6rem 0.9rem', color:'var(--text-primary)', fontSize:'0.85rem' }} />
+        <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder={tr('folders.webdavPass')} style={{ background:'#ffffff', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.6rem 0.9rem', color:'var(--text-primary)', fontSize:'0.85rem' }} />
       </div>
       <div style={{ display:'flex', gap:'0.6rem', marginBottom:'0.6rem', flexWrap:'wrap', alignItems:'center' }}>
-        <input value={connName} onChange={e=>setConnName(e.target.value)} placeholder={tr('folders.webdavNamePlaceholder')} style={{ flex:'1 1 180px', background:'rgba(15,15,25,0.65)', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.5rem 0.8rem', color:'var(--text-primary)', fontSize:'0.82rem' }} />
-        <input value={pickerPath} onChange={e=>setPickerPath(e.target.value)} placeholder="/" title="Percorso iniziale per picker" style={{ width:'120px', background:'rgba(15,15,25,0.65)', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.5rem 0.8rem', color:'var(--text-primary)', fontSize:'0.82rem', fontFamily:'var(--font-mono)' }} />
+        <input value={connName} onChange={e=>setConnName(e.target.value)} placeholder={tr('folders.webdavNamePlaceholder')} style={{ flex:'1 1 180px', background:'#ffffff', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.5rem 0.8rem', color:'var(--text-primary)', fontSize:'0.82rem' }} />
+        <input value={pickerPath} onChange={e=>setPickerPath(e.target.value)} placeholder="/" title="Percorso iniziale per picker" style={{ width:'120px', background:'#ffffff', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.5rem 0.8rem', color:'var(--text-primary)', fontSize:'0.82rem', fontFamily:'var(--font-mono)' }} />
         <button onClick={handleConnect} disabled={loadingConnect} style={{ padding:'0.55rem 1.1rem', background: loadingConnect?'rgba(74,158,255,0.08)':'linear-gradient(135deg, rgba(74,158,255,0.18), rgba(56,189,248,0.18))', color:'var(--accent-blue)', border:'1px solid rgba(74,158,255,0.25)', borderRadius:'10px', fontWeight:600, cursor: loadingConnect?'not-allowed':'pointer', opacity: loadingConnect?0.6:1 }}>
           {loadingConnect?`⏳ ${tr('folders.webdavConnecting')}`:`🔌 ${tr('folders.webdavConnect')}`}
         </button>
@@ -143,12 +143,12 @@ function WebDAVPanel({ showToast }) {
 
       {/* Browse picker after connect */}
       {connectedSourceId && (
-        <div style={{ background:'rgba(15,15,25,0.5)', border:'1px solid var(--border-glass)', borderRadius:'12px', padding:'0.9rem 1rem', marginBottom:'0.9rem' }}>
+        <div style={{ background:'#ffffff', border:'1px solid var(--border-glass)', borderRadius:'12px', padding:'0.9rem 1rem', marginBottom:'0.9rem' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'0.6rem', flexWrap:'wrap', gap:'0.4rem' }}>
             <span style={{ fontFamily:'var(--font-mono)', fontSize:'0.75rem', color:'var(--text-secondary)' }}>📂 {tr('folders.browseTitle')}</span>
             <div style={{ display:'flex', gap:'0.3rem', flexWrap:'wrap' }}>
               {breadPaths.map((p,i)=>(
-                <button key={p} onClick={()=>browsePath(p)} style={{ background: p===browsingPath?'rgba(74,158,255,0.15)':'rgba(255,255,255,0.04)', color: p===browsingPath?'var(--accent-blue)':'var(--text-secondary)', border:'1px solid var(--border-glass)', borderRadius:'6px', padding:'0.15rem 0.45rem', fontSize:'0.72rem', cursor:'pointer', fontFamily:'var(--font-mono)' }}>{i===0?tr('folders.browseRoot'):p.split('/').pop()}</button>
+                <button key={p} onClick={()=>browsePath(p)} style={{ background: p===browsingPath?'rgba(74,158,255,0.15)':'rgba(31,41,55,0.04)', color: p===browsingPath?'var(--accent-blue)':'var(--text-secondary)', border:'1px solid var(--border-glass)', borderRadius:'6px', padding:'0.15rem 0.45rem', fontSize:'0.72rem', cursor:'pointer', fontFamily:'var(--font-mono)' }}>{i===0?tr('folders.browseRoot'):p.split('/').pop()}</button>
               ))}
             </div>
           </div>
@@ -164,7 +164,7 @@ function WebDAVPanel({ showToast }) {
               // più semplice: usa it.href decoded e cerca di estrarre remote_path-like: prendi filename e ricostruisci browsingPath + filename
               const childPath = (browsingPath.replace(/\/$/,'') || '') + '/' + it.filename;
               return (
-                <div key={it.href} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0.4rem 0.6rem', borderRadius:'8px', background:'rgba(255,255,255,0.03)', border:'1px solid transparent' }}>
+                <div key={it.href} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0.4rem 0.6rem', borderRadius:'8px', background:'rgba(31,41,55,0.03)', border:'1px solid transparent' }}>
                   <button onClick={()=>browsePath(childPath)} style={{ background:'none', border:'none', color:'var(--accent-blue)', cursor:'pointer', fontSize:'0.85rem', textAlign:'left' }}>📁 {it.filename}</button>
                   <button onClick={()=>addFolderFromPicker(childPath, it.filename)} style={{ fontSize:'0.72rem', background:'rgba(74,158,255,0.1)', color:'var(--accent-blue)', border:'1px solid rgba(74,158,255,0.2)', borderRadius:'6px', padding:'0.2rem 0.5rem', cursor:'pointer' }}>＋ {tr('folders.indexThisFolder')}</button>
                 </div>
@@ -188,12 +188,12 @@ function WebDAVPanel({ showToast }) {
       ) : (
         <div style={{ display:'flex', flexDirection:'column', gap:'0.5rem' }}>
           {sources.map(s=> (
-            <div key={s.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0.85rem 1rem', background:'rgba(15,15,25,0.55)', borderRadius:'12px', border:'1px solid var(--border-glass)', gap:'0.75rem', flexWrap:'wrap' }}>
+            <div key={s.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0.85rem 1rem', background:'#ffffff', borderRadius:'12px', border:'1px solid var(--border-glass)', gap:'0.75rem', flexWrap:'wrap' }}>
               <div style={{ flex:1, minWidth:'180px' }}>
                 <div style={{ display:'flex', alignItems:'center', gap:'0.5rem', flexWrap:'wrap' }}>
                   <span style={{ fontWeight:600, color:'var(--text-primary)', fontSize:'0.9rem' }}>☁️ {s.name}</span>
                   <span style={{ fontSize:'0.65rem', padding:'0.15rem 0.4rem', borderRadius:'6px', background:'rgba(74,158,255,0.12)', color:'var(--accent-blue)', border:'1px solid rgba(74,158,255,0.2)', fontFamily:'var(--font-mono)' }}>WebDAV</span>
-                  <span style={{ fontSize:'0.7rem', padding:'0.15rem 0.45rem', borderRadius:'6px', background: s.last_status?.startsWith('ok')?'rgba(126,231,135,0.1)': s.last_status?'rgba(255,166,87,0.1)':'rgba(255,255,255,0.05)', color: s.last_status?.startsWith('ok')?'var(--accent-green)': s.last_status?'#ffa657':'var(--text-secondary)', border:`1px solid ${s.last_status?.startsWith('ok')?'rgba(126,231,135,0.2)':'var(--border-glass)'}`, fontFamily:'var(--font-mono)' }}>{s.last_status || 'mai sincronizzato'}</span>
+                  <span style={{ fontSize:'0.7rem', padding:'0.15rem 0.45rem', borderRadius:'6px', background: s.last_status?.startsWith('ok')?'rgba(126,231,135,0.1)': s.last_status?'rgba(255,166,87,0.1)':'rgba(31,41,55,0.05)', color: s.last_status?.startsWith('ok')?'var(--accent-green)': s.last_status?'#ffa657':'var(--text-secondary)', border:`1px solid ${s.last_status?.startsWith('ok')?'rgba(126,231,135,0.2)':'var(--border-glass)'}`, fontFamily:'var(--font-mono)' }}>{s.last_status || 'mai sincronizzato'}</span>
                 </div>
                 <div style={{ fontFamily:'var(--font-mono)', fontSize:'0.72rem', color:'var(--text-secondary)', marginTop:'0.25rem', wordBreak:'break-all' }}>{s.url}{s.remote_path}</div>
                 {s.last_sync && <div style={{ fontSize:'0.7rem', color:'var(--text-secondary)', marginTop:'0.15rem' }}>{tr('folders.lastSync')}: {new Date(s.last_sync).toLocaleString(lang === 'de' ? 'de-DE' : lang === 'en' ? 'en-US' : 'it-IT')}</div>}
@@ -462,7 +462,7 @@ function HiDrivePanel({ showToast }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                   <span style={{ fontWeight:700, color:'#222222', fontSize:'0.9rem' }}>☁️ {s.name}</span>
                   <span style={{ fontSize:'0.65rem', padding:'0.15rem 0.4rem', borderRadius:'6px', background:'#ff6c00', color:'#ffffff', fontFamily:'var(--font-mono)', fontWeight:700 }}>HiDrive</span>
-                  <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.45rem', borderRadius: '6px', background: s.last_status?.startsWith('ok') ? 'rgba(126,231,135,0.1)' : s.last_status ? 'rgba(255,166,87,0.1)' : 'rgba(255,255,255,0.05)', color: s.last_status?.startsWith('ok') ? 'var(--accent-green)' : s.last_status ? '#ffa657' : 'var(--text-secondary)', border: `1px solid ${s.last_status?.startsWith('ok') ? 'rgba(126,231,135,0.2)' : 'var(--border-glass)'}`, fontFamily: 'var(--font-mono)' }}>{s.last_status || 'mai sincronizzato'}</span>
+                  <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.45rem', borderRadius: '6px', background: s.last_status?.startsWith('ok') ? 'rgba(126,231,135,0.1)' : s.last_status ? 'rgba(255,166,87,0.1)' : 'rgba(31,41,55,0.05)', color: s.last_status?.startsWith('ok') ? 'var(--accent-green)' : s.last_status ? '#ffa657' : 'var(--text-secondary)', border: `1px solid ${s.last_status?.startsWith('ok') ? 'rgba(126,231,135,0.2)' : 'var(--border-glass)'}`, fontFamily: 'var(--font-mono)' }}>{s.last_status || 'mai sincronizzato'}</span>
                 </div>
                 <div style={{ fontFamily:'var(--font-mono)', fontSize:'0.72rem', color:'#6b7280', marginTop:'0.25rem', wordBreak:'break-all' }}>hidrive:{s.remote_path} · 🔄 {tr('folders.hidriveAutoEvery')} {s.sync_interval_minutes || 60} min</div>
                 {s.last_sync && <div style={{ fontSize:'0.7rem', color:'#6b7280', marginTop:'0.15rem' }}>{tr('folders.lastSync')}:{new Date(s.last_sync).toLocaleString(lang === 'de' ? 'de-DE' : lang === 'en' ? 'en-US' : 'it-IT')}</div>}
@@ -625,7 +625,7 @@ export default function Folders({ showToast }) {
             type="text" placeholder={tr('folders.inputPath')}
             value={newFolderPath} onChange={(e) => setNewFolderPath(e.target.value)}
             style={{
-              flex: 1, minWidth: '200px', background: 'rgba(15,15,25,0.8)',
+              flex: 1, minWidth: '200px', background: '#ffffff',
               border: '1px solid var(--border-glass)', borderRadius: '10px',
               padding: '0.65rem 1rem', color: 'var(--text-primary)',
               fontSize: '0.85rem', fontFamily: 'var(--font-mono)', outline: 'none', transition: 'border-color 0.2s',
@@ -637,7 +637,7 @@ export default function Folders({ showToast }) {
             type="text" placeholder={tr('folders.inputName')}
             value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)}
             style={{
-              width: '180px', background: 'rgba(15,15,25,0.8)',
+              width: '180px', background: '#ffffff',
               border: '1px solid var(--border-glass)', borderRadius: '10px',
               padding: '0.65rem 1rem', color: 'var(--text-primary)',
               fontSize: '0.85rem', fontFamily: 'var(--font-sans)', outline: 'none', transition: 'border-color 0.2s',
@@ -649,8 +649,8 @@ export default function Folders({ showToast }) {
             onClick={addFolder}
             style={{
               padding: '0.65rem 1.25rem',
-              background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(236,72,153,0.15) 100%)',
-              color: 'var(--accent-purple)', border: '1px solid rgba(168,85,247,0.2)',
+              background: 'linear-gradient(135deg, rgba(255,108,0,0.15) 0%, rgba(255,138,0,0.15) 100%)',
+              color: 'var(--accent-purple)', border: '1px solid rgba(255,108,0,0.2)',
               borderRadius: '10px', fontSize: '0.85rem', fontWeight: 500,
               cursor: 'pointer', transition: 'all 0.3s', fontFamily: 'var(--font-sans)',
             }}
@@ -686,13 +686,13 @@ export default function Folders({ showToast }) {
                   key={path}
                   onClick={() => { setNewFolderPath(path); setNewFolderName(path.split('/').pop()); setShowHelp(false); }}
                   style={{
-                    textAlign: 'left', padding: '0.4rem 0.6rem', background: 'rgba(255,255,255,0.03)',
+                    textAlign: 'left', padding: '0.4rem 0.6rem', background: 'rgba(31,41,55,0.03)',
                     border: '1px solid var(--border-glass)', borderRadius: '6px', color: 'var(--text-secondary)',
                     fontSize: '0.75rem', fontFamily: 'var(--font-mono)', cursor: 'pointer',
                     transition: 'all 0.2s',
                   }}
                   onMouseEnter={(e) => { e.target.style.background = 'rgba(74,158,255,0.1)'; e.target.style.color = 'var(--accent-blue)'; }}
-                  onMouseLeave={(e) => { e.target.style.background = 'rgba(255,255,255,0.03)'; e.target.style.color = 'var(--text-secondary)'; }}
+                  onMouseLeave={(e) => { e.target.style.background = 'rgba(31,41,55,0.03)'; e.target.style.color = 'var(--text-secondary)'; }}
                 >
                   {path}
                 </button>
@@ -720,7 +720,7 @@ export default function Folders({ showToast }) {
               transition: 'all 0.3s', animation: `fadeInUp 0.3s ease-out ${idx * 0.05}s backwards`,
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(168,85,247,0.2)';
+              e.currentTarget.style.borderColor = 'rgba(255,108,0,0.2)';
               e.currentTarget.style.transform = 'translateX(4px)';
             }}
             onMouseLeave={(e) => {
@@ -744,7 +744,7 @@ export default function Folders({ showToast }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '1rem' }}>
                 <span style={{
                   fontSize: '0.7rem', padding: '0.2rem 0.6rem', borderRadius: '6px',
-                  background: folder.active ? 'rgba(126,231,135,0.1)' : 'rgba(255,255,255,0.05)',
+                  background: folder.active ? 'rgba(126,231,135,0.1)' : 'rgba(31,41,55,0.05)',
                   color: folder.active ? 'var(--accent-green)' : 'var(--text-secondary)',
                   border: `1px solid ${folder.active ? 'rgba(126,231,135,0.2)' : 'var(--border-glass)'}`,
                   fontFamily: 'var(--font-mono)',
@@ -756,8 +756,8 @@ export default function Folders({ showToast }) {
                   disabled={scanning === folder.name}
                   style={{
                     padding: '0.4rem 0.8rem',
-                    background: scanning === folder.name ? 'rgba(168,85,247,0.05)' : 'rgba(168,85,247,0.08)',
-                    color: 'var(--accent-purple)', border: '1px solid rgba(168,85,247,0.15)',
+                    background: scanning === folder.name ? 'rgba(255,108,0,0.05)' : 'rgba(255,108,0,0.08)',
+                    color: 'var(--accent-purple)', border: '1px solid rgba(255,108,0,0.15)',
                     borderRadius: '8px', fontSize: '0.8rem', cursor: scanning === folder.name ? 'not-allowed' : 'pointer',
                     opacity: scanning === folder.name ? 0.5 : 1, transition: 'all 0.2s',
                   }}
@@ -786,8 +786,8 @@ export default function Folders({ showToast }) {
             <span>Indicizzazione: {scanProgress.processed}/{scanProgress.total}</span>
             <span>{scanProgress.pct}% · {scanProgress.newFiles} nuovi</span>
           </div>
-          <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
-            <div style={{ width: `${scanProgress.pct}%`, height: '100%', background: 'linear-gradient(90deg, #a855f7, #ec4899)', borderRadius: '3px', transition: 'width 0.5s ease' }} />
+          <div style={{ width: '100%', height: '6px', background: 'rgba(31,41,55,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
+            <div style={{ width: `${scanProgress.pct}%`, height: '100%', background: 'linear-gradient(90deg, #ff6c00, #ff8a00)', borderRadius: '3px', transition: 'width 0.5s ease' }} />
           </div>
         </div>
       )}

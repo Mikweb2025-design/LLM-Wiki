@@ -90,7 +90,7 @@ function ExportChat() {
             value={format}
             onChange={(e) => setFormat(e.target.value)}
             style={{
-              width: '100%', maxWidth: '300px', background: 'rgba(15,15,25,0.8)',
+              width: '100%', maxWidth: '300px', background: '#ffffff',
               border: '1px solid var(--border-glass)', borderRadius: '10px', padding: '0.6rem 0.8rem',
               color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'var(--font-sans)',
               cursor: 'pointer', outline: 'none',
@@ -118,7 +118,7 @@ function ExportChat() {
           disabled={history.length === 0}
           style={{
             width: '100%', padding: '0.85rem',
-            background: history.length === 0 ? 'rgba(255,255,255,0.05)' : 'var(--accent-gradient)',
+            background: history.length === 0 ? 'rgba(31,41,55,0.05)' : 'var(--accent-gradient)',
             color: history.length === 0 ? 'var(--text-secondary)' : 'var(--bg-dark)',
             border: 'none', borderRadius: '12px', fontSize: '0.9rem', fontWeight: 600,
             cursor: history.length === 0 ? 'not-allowed' : 'pointer', opacity: history.length === 0 ? 0.5 : 1,

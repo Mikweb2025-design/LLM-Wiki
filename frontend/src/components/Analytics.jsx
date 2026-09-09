@@ -12,10 +12,10 @@ function BarChart({ data, color = 'var(--accent-blue)' }) {
   const w = 700, h = 320, pad = 40, barGap = 8;
   const barW = (w - pad*2 - barGap*(data.length-1)) / data.length;
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} style={{ width:'100%', height:'320px', background:'rgba(15,15,25,0.5)', borderRadius:'12px', border:'1px solid var(--border-glass)' }}>
+    <svg viewBox={`0 0 ${w} ${h}`} style={{ width:'100%', height:'320px', background:'#ffffff', borderRadius:'12px', border:'1px solid var(--border-glass)' }}>
       {/* grid */}
       {[0,0.25,0.5,0.75,1].map(f => (
-        <line key={f} x1={pad} x2={w-pad} y1={h-pad - f*(h-pad*2)} y2={h-pad - f*(h-pad*2)} stroke="rgba(255,255,255,0.06)" strokeDasharray="4 4" />
+        <line key={f} x1={pad} x2={w-pad} y1={h-pad - f*(h-pad*2)} y2={h-pad - f*(h-pad*2)} stroke="rgba(31,41,55,0.06)" strokeDasharray="4 4" />
       ))}
       {data.map((d,i) => {
         const bh = (d.value/max)*(h-pad*2);
@@ -46,9 +46,9 @@ function LineChart({ data, color = 'var(--accent-purple)' }) {
     return `${x},${y}`;
   }).join(' ');
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} style={{ width:'100%', height:'320px', background:'rgba(15,15,25,0.5)', borderRadius:'12px', border:'1px solid var(--border-glass)' }}>
+    <svg viewBox={`0 0 ${w} ${h}`} style={{ width:'100%', height:'320px', background:'#ffffff', borderRadius:'12px', border:'1px solid var(--border-glass)' }}>
       {[0,0.25,0.5,0.75,1].map(f => (
-        <line key={f} x1={pad} x2={w-pad} y1={h-pad - f*(h-pad*2)} y2={h-pad - f*(h-pad*2)} stroke="rgba(255,255,255,0.06)" strokeDasharray="4 4" />
+        <line key={f} x1={pad} x2={w-pad} y1={h-pad - f*(h-pad*2)} y2={h-pad - f*(h-pad*2)} stroke="rgba(31,41,55,0.06)" strokeDasharray="4 4" />
       ))}
       <polyline fill="none" stroke={color} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" points={pts} />
       {data.map((d,i)=>{
@@ -64,7 +64,7 @@ function PieChart({ data }) {
   const { lang: _langPie } = useI18n(); const _trPie = p => t(_langPie,p);
   if (!data || data.length===0) return <div style={{textAlign:'center', color:'var(--text-secondary)', padding:'2rem'}}>{_trPie('analytics.noData')}</div>;
   const total = data.reduce((s,d)=>s+d.value,0) || 1;
-  const colors = ['#4a9eff','#a855f7','#ec4899','#7ee787','#ffa657','#38bdf8','#f87171','#34d399'];
+  const colors = ['#4a9eff','#ff6c00','#ff8a00','#7ee787','#ffa657','#38bdf8','#f87171','#34d399'];
   let acc=0;
   const cx=160, cy=160, r=110;
   return (
@@ -77,9 +77,9 @@ function PieChart({ data }) {
           const large = (end-start) > Math.PI ? 1:0;
           const x1 = cx + r*Math.cos(start), y1 = cy + r*Math.sin(start);
           const x2 = cx + r*Math.cos(end), y2 = cy + r*Math.sin(end);
-          return <path key={i} d={`M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`} fill={colors[i%colors.length]} stroke="rgba(15,15,25,0.8)" strokeWidth="2" />;
+          return <path key={i} d={`M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`} fill={colors[i%colors.length]} stroke="#ffffff" strokeWidth="2" />;
         })}
-        <circle cx={cx} cy={cy} r="58" fill="rgba(15,15,25,0.95)" />
+        <circle cx={cx} cy={cy} r="58" fill="#ffffff" />
         <text x={cx} y={cy-6} textAnchor="middle" fontSize="13" fontWeight="700" fill="var(--text-primary)">{total.toLocaleString('it-IT')}€</text>
         <text x={cx} y={cy+10} textAnchor="middle" fontSize="9" fill="var(--text-secondary)">{_trPie('analytics.total')}</text>
       </svg>
@@ -196,7 +196,7 @@ export default function Analytics({ showToast }) {
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))', gap:'0.75rem' }}>
         <div>
           <label style={{ fontSize:'0.75rem', color:'var(--text-secondary)', fontFamily:'var(--font-mono)' }}>{tr('analytics.template')}</label>
-          <select value={preset} onChange={e=>setPreset(e.target.value)} style={{ width:'100%', marginTop:'0.25rem', background:'rgba(15,15,25,0.8)', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.55rem 0.7rem', color:'var(--text-primary)', fontSize:'0.85rem' }}>
+          <select value={preset} onChange={e=>setPreset(e.target.value)} style={{ width:'100%', marginTop:'0.25rem', background:'#ffffff', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.55rem 0.7rem', color:'var(--text-primary)', fontSize:'0.85rem' }}>
             {Object.entries(presets).map(([k,v])=> <option key={k} value={k}>{v.label} — {v.fields.join(', ')}</option>)}
             <option value="fatture">Fatture — data, importo, fornitore, numero_fattura</option>
             <option value="spese">Spese — data, importo, categoria, descrizione</option>
@@ -206,7 +206,7 @@ export default function Analytics({ showToast }) {
         </div>
         <div>
           <label style={{ fontSize:'0.75rem', color:'var(--text-secondary)', fontFamily:'var(--font-mono)' }}>{tr('analytics.amountField')}</label>
-          <select value={sumField} onChange={e=>setSumField(e.target.value)} style={{ width:'100%', marginTop:'0.25rem', background:'rgba(15,15,25,0.8)', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.55rem 0.7rem', color:'var(--text-primary)', fontSize:'0.85rem' }}>
+          <select value={sumField} onChange={e=>setSumField(e.target.value)} style={{ width:'100%', marginTop:'0.25rem', background:'#ffffff', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.55rem 0.7rem', color:'var(--text-primary)', fontSize:'0.85rem' }}>
             <option value="importo">importo</option>
             <option value="importo_netto">importo_netto</option>
             <option value="importo_lordo">importo_lordo</option>
@@ -215,7 +215,7 @@ export default function Analytics({ showToast }) {
         </div>
         <div>
           <label style={{ fontSize:'0.75rem', color:'var(--text-secondary)', fontFamily:'var(--font-mono)' }}>{tr('analytics.groupBy')}</label>
-          <select value={groupBy} onChange={e=>setGroupBy(e.target.value)} style={{ width:'100%', marginTop:'0.25rem', background:'rgba(15,15,25,0.8)', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.55rem 0.7rem', color:'var(--text-primary)', fontSize:'0.85rem' }}>
+          <select value={groupBy} onChange={e=>setGroupBy(e.target.value)} style={{ width:'100%', marginTop:'0.25rem', background:'#ffffff', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.55rem 0.7rem', color:'var(--text-primary)', fontSize:'0.85rem' }}>
             <option value="month">month (YYYY-MM)</option>
             <option value="categoria">categoria</option>
             <option value="fornitore">fornitore</option>
@@ -224,7 +224,7 @@ export default function Analytics({ showToast }) {
         </div>
         <div>
           <label style={{ fontSize:'0.75rem', color:'var(--text-secondary)', fontFamily:'var(--font-mono)' }}>{tr('analytics.chartType')}</label>
-          <select value={chartType} onChange={e=>setChartType(e.target.value)} style={{ width:'100%', marginTop:'0.25rem', background:'rgba(15,15,25,0.8)', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.55rem 0.7rem', color:'var(--text-primary)', fontSize:'0.85rem' }}>
+          <select value={chartType} onChange={e=>setChartType(e.target.value)} style={{ width:'100%', marginTop:'0.25rem', background:'#ffffff', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.55rem 0.7rem', color:'var(--text-primary)', fontSize:'0.85rem' }}>
             <option value="bar">{tr('analytics.bar')}</option>
             <option value="line">{tr('analytics.line')}</option>
             <option value="pie">{tr('analytics.pie')}</option>
@@ -235,8 +235,8 @@ export default function Analytics({ showToast }) {
 
       {preset==='custom' && (
         <div style={{ background:'var(--bg-glass)', border:'1px solid var(--border-glass)', borderRadius:'12px', padding:'0.9rem 1rem', display:'flex', flexDirection:'column', gap:'0.6rem' }}>
-          <input value={customFields} onChange={e=>setCustomFields(e.target.value)} placeholder={tr('analytics.customFieldsPlaceholder')} style={{ background:'rgba(15,15,25,0.8)', border:'1px solid var(--border-glass)', borderRadius:'8px', padding:'0.5rem 0.7rem', color:'var(--text-primary)', fontSize:'0.85rem' }} />
-          <textarea value={customPrompt} onChange={e=>setCustomPrompt(e.target.value)} placeholder={tr('analytics.customPromptPlaceholder')} rows={2} style={{ background:'rgba(15,15,25,0.8)', border:'1px solid var(--border-glass)', borderRadius:'8px', padding:'0.5rem 0.7rem', color:'var(--text-primary)', fontSize:'0.82rem', resize:'vertical' }} />
+          <input value={customFields} onChange={e=>setCustomFields(e.target.value)} placeholder={tr('analytics.customFieldsPlaceholder')} style={{ background:'#ffffff', border:'1px solid var(--border-glass)', borderRadius:'8px', padding:'0.5rem 0.7rem', color:'var(--text-primary)', fontSize:'0.85rem' }} />
+          <textarea value={customPrompt} onChange={e=>setCustomPrompt(e.target.value)} placeholder={tr('analytics.customPromptPlaceholder')} rows={2} style={{ background:'#ffffff', border:'1px solid var(--border-glass)', borderRadius:'8px', padding:'0.5rem 0.7rem', color:'var(--text-primary)', fontSize:'0.82rem', resize:'vertical' }} />
           <span style={{ fontSize:'0.7rem', color:'var(--text-secondary)' }}>{tr('analytics.customPromptPlaceholder')}</span>
         </div>
       )}
@@ -259,9 +259,9 @@ export default function Analytics({ showToast }) {
           {chartType==='line' && <LineChart data={result.chart_data} />}
           {chartType==='pie' && <PieChart data={result.chart_data} />}
           {chartType==='table' && (
-            <div style={{ background:'rgba(15,15,25,0.5)', border:'1px solid var(--border-glass)', borderRadius:'12px', overflow:'hidden' }}>
+            <div style={{ background:'#ffffff', border:'1px solid var(--border-glass)', borderRadius:'12px', overflow:'hidden' }}>
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.82rem' }}>
-                <thead><tr style={{ background:'rgba(255,255,255,0.04)', textAlign:'left' }}><th style={{ padding:'0.6rem 0.8rem', color:'var(--text-secondary)' }}>{groupBy}</th><th style={{ padding:'0.6rem 0.8rem', color:'var(--text-secondary)', textAlign:'right' }}>Importo</th><th style={{ padding:'0.6rem 0.8rem', color:'var(--text-secondary)', textAlign:'center' }}>#</th></tr></thead>
+                <thead><tr style={{ background:'rgba(31,41,55,0.04)', textAlign:'left' }}><th style={{ padding:'0.6rem 0.8rem', color:'var(--text-secondary)' }}>{groupBy}</th><th style={{ padding:'0.6rem 0.8rem', color:'var(--text-secondary)', textAlign:'right' }}>Importo</th><th style={{ padding:'0.6rem 0.8rem', color:'var(--text-secondary)', textAlign:'center' }}>#</th></tr></thead>
                 <tbody>{result.chart_data.map((r,i)=><tr key={i} style={{ borderTop:'1px solid var(--border-glass)' }}><td style={{ padding:'0.5rem 0.8rem', color:'var(--text-primary)' }}>{r.label}</td><td style={{ padding:'0.5rem 0.8rem', color:'var(--accent-green)', textAlign:'right', fontWeight:600 }}>{r.value.toLocaleString('it-IT')}€</td><td style={{ padding:'0.5rem 0.8rem', textAlign:'center', color:'var(--text-secondary)' }}>{r.count}</td></tr>)}</tbody>
               </table>
             </div>
@@ -270,7 +270,7 @@ export default function Analytics({ showToast }) {
           {/* raw rows preview */}
           <details style={{ marginTop:'0.75rem' }}>
             <summary style={{ cursor:'pointer', color:'var(--text-secondary)', fontSize:'0.8rem', fontFamily:'var(--font-mono)' }}>{tr('analytics.showRows')} ({result.rows?.length})</summary>
-            <pre style={{ marginTop:'0.5rem', background:'rgba(15,15,25,0.8)', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.8rem', fontSize:'0.75rem', color:'var(--text-secondary)', maxHeight:'200px', overflow:'auto', whiteSpace:'pre-wrap' }}>{JSON.stringify(result.rows.slice(0,10), null, 2)}</pre>
+            <pre style={{ marginTop:'0.5rem', background:'#ffffff', border:'1px solid var(--border-glass)', borderRadius:'10px', padding:'0.8rem', fontSize:'0.75rem', color:'var(--text-secondary)', maxHeight:'200px', overflow:'auto', whiteSpace:'pre-wrap' }}>{JSON.stringify(result.rows.slice(0,10), null, 2)}</pre>
           </details>
         </div>
       )}

@@ -1,18 +1,18 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 :root {
-  --bg-dark: #0a0a0f;
-  --bg-card: rgba(15, 15, 25, 0.8);
-  --bg-glass: rgba(255, 255, 255, 0.03);
-  --border-glass: rgba(255, 255, 255, 0.08);
-  --text-primary: #e8eaed;
-  --text-secondary: #9aa0a6;
-  --accent-blue: #4a9eff;
-  --accent-purple: #a855f7;
-  --accent-pink: #ec4899;
-  --accent-gradient: linear-gradient(135deg, #4a9eff 0%, #a855f7 50%, #ec4899 100%);
-  --glow-blue: 0 0 20px rgba(74, 158, 255, 0.3);
-  --glow-purple: 0 0 20px rgba(168, 85, 247, 0.3);
+  --bg-dark: #f4f5f7;
+  --bg-card: #ffffff;
+  --bg-glass: #ffffff;
+  --border-glass: #eadfd2;
+  --text-primary: #1f2937;
+  --text-secondary: #6b7280;
+  --accent-blue: #2563eb;
+  --accent-purple: #ff6c00;
+  --accent-pink: #ff8a00;
+  --accent-gradient: linear-gradient(135deg, #ff8a00 0%, #ff6c00 50%, #e65300 100%);
+  --glow-blue: 0 0 20px rgba(37, 99, 235, 0.15);
+  --glow-purple: 0 0 20px rgba(255, 108, 0, 0.18);
   --font-display: 'Space Grotesk', sans-serif;
   --font-sans: 'Outfit', sans-serif;
 }
@@ -31,7 +31,7 @@ body {
   overflow-x: hidden;
 }
 
-/* Animated gradient background */
+/* Soft warm background wash */
 body::before {
   content: '';
   position: fixed;
@@ -39,10 +39,10 @@ body::before {
   left: -50%;
   width: 200%;
   height: 200%;
-  background: 
-    radial-gradient(ellipse at 20% 50%, rgba(74, 158, 255, 0.08) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 20%, rgba(168, 85, 247, 0.08) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 80%, rgba(236, 72, 153, 0.05) 0%, transparent 50%);
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(255, 138, 0, 0.05) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(255, 108, 0, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 80%, rgba(37, 99, 235, 0.03) 0%, transparent 50%);
   animation: bgShift 20s ease-in-out infinite;
   z-index: -1;
   pointer-events: none;
@@ -58,8 +58,8 @@ body::before {
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+::-webkit-scrollbar-thumb { background: rgba(31, 41, 55, 0.18); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(31, 41, 55, 0.3); }
 
 /* Animations */
 @keyframes fadeInUp {
@@ -73,8 +73,8 @@ body::before {
 }
 
 @keyframes glowPulse {
-  0%, 100% { box-shadow: 0 0 5px rgba(74, 158, 255, 0.2); }
-  50% { box-shadow: 0 0 25px rgba(74, 158, 255, 0.4), 0 0 50px rgba(168, 85, 247, 0.2); }
+  0%, 100% { box-shadow: 0 0 5px rgba(255, 108, 0, 0.15); }
+  50% { box-shadow: 0 0 25px rgba(255, 108, 0, 0.25), 0 0 50px rgba(255, 138, 0, 0.12); }
 }
 
 @keyframes float {
@@ -95,13 +95,12 @@ body::before {
   animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Glass morphism card */
+/* Light card */
 .glass-card {
   background: var(--bg-glass);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border-glass);
   border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(31, 41, 55, 0.06);
 }
 
 /* Gradient text */
@@ -142,15 +141,15 @@ body::before {
 
 .prose code {
   font-family: 'Space Grotesk', monospace;
-  background: rgba(74, 158, 255, 0.1);
-  color: var(--accent-blue);
+  background: rgba(255, 108, 0, 0.08);
+  color: #c25700;
   padding: 0.15em 0.4em;
   border-radius: 4px;
   font-size: 0.85em;
 }
 
 .prose pre {
-  background: rgba(15, 15, 25, 0.9);
+  background: #f6f7f9;
   border: 1px solid var(--border-glass);
   border-radius: 12px;
   padding: 1rem;
@@ -185,4 +184,8 @@ body::before {
   margin: 1rem 0;
   color: var(--text-secondary);
   font-style: italic;
+  background: #fff7f0;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-radius: 0 8px 8px 0;
 }

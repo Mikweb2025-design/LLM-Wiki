@@ -154,7 +154,7 @@ function App() {
         right: '-15%',
         width: '600px',
         height: '600px',
-        background: 'radial-gradient(circle, rgba(168, 85, 247, 0.1) 0%, transparent 70%)',
+        background: 'radial-gradient(circle, rgba(255,108,0, 0.1) 0%, transparent 70%)',
         borderRadius: '50%',
         filter: 'blur(80px)',
         animation: 'float 10s ease-in-out infinite 2s',
@@ -167,7 +167,7 @@ function App() {
         left: '30%',
         width: '400px',
         height: '400px',
-        background: 'radial-gradient(circle, rgba(236, 72, 153, 0.08) 0%, transparent 70%)',
+        background: 'radial-gradient(circle, rgba(255,138,0, 0.08) 0%, transparent 70%)',
         borderRadius: '50%',
         filter: 'blur(60px)',
         animation: 'float 12s ease-in-out infinite 4s',
@@ -206,7 +206,7 @@ function App() {
           onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05) rotate(-5deg)'}
           onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1) rotate(0deg)'}
           >
-            <span style={{ fontSize: '1.4rem' }}>🧠</span>
+            <span style={{ display: 'inline-flex' }}><svg viewBox="0 0 24 24" width="26" height="26"><path fill="#ffffff" d="M7 19a4 4 0 0 1-.6-7.95A5.5 5.5 0 0 1 17 8.6 4.25 4.25 0 0 1 17.5 19H7z"/></svg></span>
           </div>
           <div>
             <h1 style={{
@@ -322,7 +322,7 @@ function App() {
                   cursor: 'pointer',
                   transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
                   background: isActive 
-                    ? 'linear-gradient(135deg, rgba(74, 158, 255, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%)'
+                    ? 'linear-gradient(135deg, rgba(74, 158, 255, 0.15) 0%, rgba(255,108,0, 0.15) 100%)'
                     : 'transparent',
                   color: isActive ? 'var(--accent-blue)' : 'var(--text-secondary)',
                   border: isActive 
@@ -333,7 +333,7 @@ function App() {
                 }}
                 onMouseEnter={(e) => {
                   if (!isActive) {
-                    e.target.style.background = 'rgba(255, 255, 255, 0.05)';
+                    e.target.style.background = 'rgba(31,41,55,0.05)';
                     e.target.style.color = 'var(--text-primary)';
                   }
                 }}

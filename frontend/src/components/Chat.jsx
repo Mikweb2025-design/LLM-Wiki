@@ -14,10 +14,10 @@ function ChatMiniChart({ chart }) {
   const w = 420, h = 160, pad = 30;
   const barGap = 6;
   const barW = (w - pad*2 - barGap*(data.length-1)) / data.length;
-  const colors = ['#4a9eff','#a855f7','#ec4899','#7ee787'];
+  const colors = ['#4a9eff','#ff6c00','#ff8a00','#7ee787'];
   const locale = lang === 'en' ? 'en-US' : lang === 'de' ? 'de-DE' : 'it-IT';
   return (
-    <div style={{ marginTop: '0.75rem', padding: '0.6rem', background: 'rgba(15,15,25,0.6)', borderRadius: '10px', border: '1px solid var(--border-glass)' }}>
+    <div style={{ marginTop: '0.75rem', padding: '0.6rem', background: '#ffffff', borderRadius: '10px', border: '1px solid var(--border-glass)' }}>
       <div style={{ fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', marginBottom: '0.4rem', display:'flex', justifyContent:'space-between' }}>
         <span>📊 {chart.preset} • {chart.group_by} • {chart.sum_field}</span>
         <span style={{ color:'var(--accent-green)', fontWeight:600 }}>{chart.total?.toLocaleString(locale)}€ {tr('chat.chartTotal')}</span>
@@ -52,7 +52,7 @@ const MessageBubble = memo(({ msg, onCopy, onSpeak }) => {
       <div style={{
         maxWidth: '85%', borderRadius: '16px', padding: '0.75rem 1rem',
         background: isUser
-          ? 'linear-gradient(135deg, var(--accent-green) 0%, var(--accent-blue) 100%)'
+          ? 'linear-gradient(135deg, #ff8a00 0%, #ff6c00 100%)'
           : msg.error
           ? 'rgba(255,85,85,0.1)'
           : 'var(--bg-glass)',
@@ -61,8 +61,8 @@ const MessageBubble = memo(({ msg, onCopy, onSpeak }) => {
           : msg.error
           ? '1px solid rgba(255,85,85,0.2)'
           : '1px solid var(--border-glass)',
-        color: isUser ? 'var(--bg-dark)' : 'var(--text-primary)',
-        boxShadow: isUser ? '0 4px 20px rgba(126,231,135,0.2)' : 'none',
+        color: isUser ? '#ffffff' : 'var(--text-primary)',
+        boxShadow: isUser ? '0 4px 20px rgba(255,108,0,0.25)' : 'none',
         transition: 'transform 0.2s',
       }}
       onMouseEnter={(e) => { if (!isUser) e.currentTarget.style.transform = 'translateX(2px)'; }}
@@ -293,7 +293,7 @@ function Chat() {
             color: 'var(--text-secondary)', padding: '0.35rem 0.8rem', borderRadius: '10px',
             cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'var(--font-mono)', transition: 'all 0.2s',
           }}
-          onMouseEnter={(e) => { e.target.style.background = 'rgba(255,255,255,0.05)'; e.target.style.color = 'var(--text-primary)'; }}
+          onMouseEnter={(e) => { e.target.style.background = 'rgba(31,41,55,0.05)'; e.target.style.color = 'var(--text-primary)'; }}
           onMouseLeave={(e) => { e.target.style.background = 'var(--bg-glass)'; e.target.style.color = 'var(--text-secondary)'; }}
           >{tr('chat.new')}</button>
         </div>

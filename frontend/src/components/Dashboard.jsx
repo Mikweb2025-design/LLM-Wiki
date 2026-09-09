@@ -166,7 +166,7 @@ function Dashboard({ onNavigate }) {
                   </div>
                   <div style={{
                     height: '8px',
-                    background: 'rgba(255,255,255,0.05)',
+                    background: 'rgba(31,41,55,0.05)',
                     borderRadius: '4px',
                     overflow: 'hidden',
                   }}>
@@ -319,7 +319,7 @@ function Dashboard({ onNavigate }) {
       {/* Quick Actions - Bigger */}
       <div className="glass-card" style={{
         padding: '1.5rem',
-        background: 'linear-gradient(135deg, rgba(74, 158, 255, 0.05) 0%, rgba(168, 85, 247, 0.05) 50%, rgba(236, 72, 153, 0.05) 100%)',
+        background: 'linear-gradient(135deg, rgba(74, 158, 255, 0.05) 0%, rgba(255,108,0, 0.05) 50%, rgba(255,138,0, 0.05) 100%)',
       }}>
         <h3 style={{
           fontFamily: 'var(--font-display)',
@@ -363,7 +363,7 @@ function Dashboard({ onNavigate }) {
                   gap: '0.75rem',
                   padding: '0.6rem 0.8rem',
                   borderRadius: '10px',
-                  background: 'rgba(255,255,255,0.025)',
+                  background: 'rgba(31,41,55,0.025)',
                   animation: `fadeInUp 0.3s ease-out ${idx * 0.05}s backwards`,
                 }}
               >
@@ -412,9 +412,9 @@ function Dashboard({ onNavigate }) {
 function StatCard({ icon, label, value, color }) {
   const gradients = {
     blue: 'linear-gradient(135deg, rgba(74, 158, 255, 0.15) 0%, rgba(74, 158, 255, 0.05) 100%)',
-    purple: 'linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(168, 85, 247, 0.05) 100%)',
+    purple: 'linear-gradient(135deg, rgba(255,108,0, 0.15) 0%, rgba(255,108,0, 0.05) 100%)',
     green: 'linear-gradient(135deg, rgba(126, 231, 135, 0.15) 0%, rgba(126, 231, 135, 0.05) 100%)',
-    pink: 'linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(236, 72, 153, 0.05) 100%)',
+    pink: 'linear-gradient(135deg, rgba(255,138,0, 0.15) 0%, rgba(255,138,0, 0.05) 100%)',
   };
   const accentColors = {
     blue: 'var(--accent-blue)',

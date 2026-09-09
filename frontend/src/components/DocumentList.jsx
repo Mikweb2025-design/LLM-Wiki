@@ -446,7 +446,7 @@ function DocumentList({ showToast }) {
             disabled={reindexAllLoading}
             style={{
               padding: '0.5rem 1rem',
-              background: reindexAllLoading ? 'rgba(74, 158, 255, 0.05)' : 'linear-gradient(135deg, rgba(74, 158, 255, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)',
+              background: reindexAllLoading ? 'rgba(74, 158, 255, 0.05)' : 'linear-gradient(135deg, rgba(74, 158, 255, 0.1) 0%, rgba(255,108,0, 0.1) 100%)',
               color: 'var(--accent-blue)',
               border: '1px solid rgba(74, 158, 255, 0.2)',
               borderRadius: '10px',
@@ -465,7 +465,7 @@ function DocumentList({ showToast }) {
             disabled={scanning}
             style={{
               padding: '0.5rem 1rem',
-              background: scanning ? 'rgba(255,255,255,0.05)' : 'var(--bg-glass)',
+              background: scanning ? 'rgba(31,41,55,0.05)' : 'var(--bg-glass)',
               color: 'var(--text-secondary)',
               border: '1px solid var(--border-glass)',
               borderRadius: '10px',
@@ -474,7 +474,7 @@ function DocumentList({ showToast }) {
               transition: 'all 0.3s',
               opacity: scanning ? 0.5 : 1,
             }}
-            onMouseEnter={(e) => { if (!scanning) { e.target.style.background = 'rgba(255,255,255,0.08)'; e.target.style.color = 'var(--text-primary)'; } }}
+            onMouseEnter={(e) => { if (!scanning) { e.target.style.background = 'rgba(31,41,55,0.08)'; e.target.style.color = 'var(--text-primary)'; } }}
             onMouseLeave={(e) => { e.target.style.background = 'var(--bg-glass)'; e.target.style.color = 'var(--text-secondary)'; }}
           >
             {scanning ? `⏳ ${tr('common.loading')}` : `🔍 ${tr('documents.scanFolder')}`}
@@ -485,8 +485,8 @@ function DocumentList({ showToast }) {
                 <span>{tr('documents.scanProgress')}: {scanProgress.processed}/{scanProgress.total}</span>
                 <span>{scanProgress.pct}% · {scanProgress.newFiles} {tr('documents.indexed')}</span>
               </div>
-              <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
-                <div style={{ width: `${scanProgress.pct}%`, height: '100%', background: 'linear-gradient(90deg, #4a9eff, #a855f7)', borderRadius: '3px', transition: 'width 0.5s ease' }} />
+              <div style={{ width: '100%', height: '6px', background: 'rgba(31,41,55,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
+                <div style={{ width: `${scanProgress.pct}%`, height: '100%', background: 'linear-gradient(90deg, #4a9eff, #ff6c00)', borderRadius: '3px', transition: 'width 0.5s ease' }} />
               </div>
             </div>
           )}
@@ -494,9 +494,9 @@ function DocumentList({ showToast }) {
             onClick={handleAutoTagAll}
             style={{
               padding: '0.5rem 1rem',
-              background: 'rgba(168,85,247,0.08)',
+              background: 'rgba(255,108,0,0.08)',
               color: 'var(--accent-purple)',
-              border: '1px solid rgba(168,85,247,0.2)',
+              border: '1px solid rgba(255,108,0,0.2)',
               borderRadius: '10px',
               fontSize: '0.85rem',
               cursor: 'pointer',
@@ -517,7 +517,7 @@ function DocumentList({ showToast }) {
               cursor: 'pointer',
               transition: 'all 0.3s',
             }}
-            onMouseEnter={(e) => { e.target.style.background = 'rgba(255,255,255,0.08)'; e.target.style.color = 'var(--text-primary)'; }}
+            onMouseEnter={(e) => { e.target.style.background = 'rgba(31,41,55,0.08)'; e.target.style.color = 'var(--text-primary)'; }}
             onMouseLeave={(e) => { e.target.style.background = 'var(--bg-glass)'; e.target.style.color = 'var(--text-secondary)'; }}
           >
             {tr('common.refresh')}
@@ -617,7 +617,7 @@ function DocumentList({ showToast }) {
             )}
           </div>
           {reindexProgress && (
-            <div style={{ height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
+            <div style={{ height: '6px', background: 'rgba(31,41,55,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
               <div style={{
                 height: '100%',
                 width: `${(reindexProgress.current / reindexProgress.total) * 100}%`,
@@ -709,12 +709,12 @@ function DocumentList({ showToast }) {
                     <span>{doc.extension?.toUpperCase()}</span>
                     <span>{formatSize(doc.size_bytes)}</span>
                     <span>{new Date(doc.modified).toLocaleDateString('it-IT')}</span>
-                    <span title={isWebDAV(doc)?tr('documents.sourceNextcloud'):tr('documents.sourceLocal')} style={{ fontSize:'0.65rem', padding:'0.1rem 0.35rem', borderRadius:'6px', background: isWebDAV(doc)?'rgba(74,158,255,0.12)':'rgba(255,255,255,0.06)', color: isWebDAV(doc)?'var(--accent-blue)':'var(--text-secondary)', border:'1px solid var(--border-glass)' }}>{isWebDAV(doc)?tr('documents.badgeNextcloud'):tr('documents.badgeLocal')}</span>
+                    <span title={isWebDAV(doc)?tr('documents.sourceNextcloud'):tr('documents.sourceLocal')} style={{ fontSize:'0.65rem', padding:'0.1rem 0.35rem', borderRadius:'6px', background: isWebDAV(doc)?'rgba(74,158,255,0.12)':'rgba(31,41,55,0.06)', color: isWebDAV(doc)?'var(--accent-blue)':'var(--text-secondary)', border:'1px solid var(--border-glass)' }}>{isWebDAV(doc)?tr('documents.badgeNextcloud'):tr('documents.badgeLocal')}</span>
                   </div>
                   {(tagsMap[doc.filename]||[]).length>0 && (
                     <div style={{ display:'flex', gap:'0.3rem', marginTop:'0.3rem', flexWrap:'wrap' }}>
                       {(tagsMap[doc.filename]||[]).map(tag=>(
-                        <span key={tag} style={{ fontSize:'0.65rem', padding:'0.1rem 0.4rem', borderRadius:'6px', background: tag==='fattura'?'rgba(74,158,255,0.12)':tag==='stipendio'?'rgba(126,231,135,0.12)':tag==='contratto'?'rgba(168,85,247,0.12)':'rgba(255,255,255,0.06)', color: tag==='fattura'?'var(--accent-blue)':tag==='stipendio'?'var(--accent-green)':tag==='contratto'?'var(--accent-purple)':'var(--text-secondary)', border:'1px solid var(--border-glass)', fontFamily:'var(--font-mono)' }}>{tag}</span>
+                        <span key={tag} style={{ fontSize:'0.65rem', padding:'0.1rem 0.4rem', borderRadius:'6px', background: tag==='fattura'?'rgba(74,158,255,0.12)':tag==='stipendio'?'rgba(126,231,135,0.12)':tag==='contratto'?'rgba(255,108,0,0.12)':'rgba(31,41,55,0.06)', color: tag==='fattura'?'var(--accent-blue)':tag==='stipendio'?'var(--accent-green)':tag==='contratto'?'var(--accent-purple)':'var(--text-secondary)', border:'1px solid var(--border-glass)', fontFamily:'var(--font-mono)' }}>{tag}</span>
                       ))}
                     </div>
                   )}
@@ -813,9 +813,9 @@ function DocumentList({ showToast }) {
               onClick={() => setCustomDir(folder)}
               style={{
                 padding: '0.3rem 0.7rem',
-                background: customDir === folder ? 'rgba(168, 85, 247, 0.1)' : 'rgba(255,255,255,0.03)',
+                background: customDir === folder ? 'rgba(255,108,0, 0.1)' : 'rgba(31,41,55,0.03)',
                 color: customDir === folder ? 'var(--accent-purple)' : 'var(--text-secondary)',
-                border: `1px solid ${customDir === folder ? 'rgba(168, 85, 247, 0.2)' : 'var(--border-glass)'}`,
+                border: `1px solid ${customDir === folder ? 'rgba(255,108,0, 0.2)' : 'var(--border-glass)'}`,
                 borderRadius: '8px',
                 fontSize: '0.75rem',
                 cursor: 'pointer',
@@ -837,7 +837,7 @@ function DocumentList({ showToast }) {
             style={{
               flex: 1,
               minWidth: '200px',
-              background: 'rgba(15, 15, 25, 0.8)',
+              background: '#ffffff',
               border: '1px solid var(--border-glass)',
               borderRadius: '10px',
               padding: '0.65rem 1rem',
@@ -856,7 +856,7 @@ function DocumentList({ showToast }) {
             disabled={loadingPreview || !customDir.trim()}
             style={{
               padding: '0.65rem 1rem',
-              background: loadingPreview ? 'rgba(255,255,255,0.05)' : 'var(--bg-glass)',
+              background: loadingPreview ? 'rgba(31,41,55,0.05)' : 'var(--bg-glass)',
               color: 'var(--text-secondary)',
               border: '1px solid var(--border-glass)',
               borderRadius: '10px',
@@ -874,9 +874,9 @@ function DocumentList({ showToast }) {
             disabled={scanningCustom || !customDir.trim()}
             style={{
               padding: '0.65rem 1.25rem',
-              background: scanningCustom ? 'rgba(168, 85, 247, 0.05)' : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1) 0%, rgba(236, 72, 153, 0.1) 100%)',
+              background: scanningCustom ? 'rgba(255,108,0, 0.05)' : 'linear-gradient(135deg, rgba(255,108,0, 0.1) 0%, rgba(255,138,0, 0.1) 100%)',
               color: 'var(--accent-purple)',
-              border: '1px solid rgba(168, 85, 247, 0.2)',
+              border: '1px solid rgba(255,108,0, 0.2)',
               borderRadius: '10px',
               fontSize: '0.85rem',
               cursor: scanningCustom ? 'not-allowed' : 'pointer',
@@ -923,7 +923,7 @@ function DocumentList({ showToast }) {
             style={{
               flex: 1,
               minWidth: '200px',
-              background: 'rgba(15, 15, 25, 0.8)',
+              background: '#ffffff',
               border: '1px solid var(--border-glass)',
               borderRadius: '10px',
               padding: '0.65rem 1rem',
@@ -942,7 +942,7 @@ function DocumentList({ showToast }) {
             disabled={scanningHidrive || scanningCustom || scanning}
             style={{
               padding: '0.65rem 1.25rem',
-              background: scanningHidrive ? 'rgba(74, 158, 255, 0.05)' : 'linear-gradient(135deg, rgba(74, 158, 255, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)',
+              background: scanningHidrive ? 'rgba(74, 158, 255, 0.05)' : 'linear-gradient(135deg, rgba(74, 158, 255, 0.1) 0%, rgba(255,108,0, 0.1) 100%)',
               color: 'var(--accent-blue)',
               border: '1px solid rgba(74, 158, 255, 0.2)',
               borderRadius: '10px',

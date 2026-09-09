@@ -178,7 +178,7 @@ function SearchWithFilters() {
             borderRadius: '10px', padding: '0.6rem 0.8rem', color: 'var(--text-secondary)',
             fontSize: '0.8rem', cursor: 'pointer', transition: 'all 0.2s', fontFamily: 'var(--font-mono)',
           }}
-          onMouseEnter={(e) => { e.target.style.background = 'rgba(255,255,255,0.05)'; e.target.style.color = 'var(--text-primary)'; }}
+          onMouseEnter={(e) => { e.target.style.background = 'rgba(31,41,55,0.05)'; e.target.style.color = 'var(--text-primary)'; }}
           onMouseLeave={(e) => { e.target.style.background = 'var(--bg-glass)'; e.target.style.color = 'var(--text-secondary)'; }}
         >{tr('search.reset')}</button>
       </div>

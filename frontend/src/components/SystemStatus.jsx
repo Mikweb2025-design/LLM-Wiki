@@ -82,8 +82,8 @@ function SystemStatus() {
       value: `${status.total_chunks} ${tr('system.segments')}`,
       icon: '🧩',
       color: 'purple',
-      bgColor: 'rgba(168,85,247,0.05)', textColor: 'var(--accent-purple)',
-      borderColor: 'rgba(168,85,247,0.15)',
+      bgColor: 'rgba(255,108,0,0.05)', textColor: 'var(--accent-purple)',
+      borderColor: 'rgba(255,108,0,0.15)',
     },
     {
       label: tr('settings.model'),
@@ -195,7 +195,7 @@ function SystemStatus() {
             { step: 3, title: tr('system.installTesseract'), code: ['brew install tesseract'], note: 'Solo per OCR immagini' },
           ].map((item) => (
             <div key={item.step} style={{
-              padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '10px',
+              padding: '0.75rem 1rem', background: 'rgba(31,41,55,0.02)', borderRadius: '10px',
               border: '1px solid var(--border-glass)', display: 'flex', gap: '0.75rem', alignItems: 'flex-start',
               animation: `fadeInUp 0.3s ease-out ${item.step * 0.1}s backwards`,
             }}>
@@ -214,7 +214,7 @@ function SystemStatus() {
                 )}
                 {item.code && item.code.map((cmd, i) => (
                   <code key={i} style={{
-                    background: 'rgba(15,15,25,0.8)', color: 'var(--accent-green)', padding: '0.3rem 0.6rem',
+                    background: '#ffffff', color: 'var(--accent-green)', padding: '0.3rem 0.6rem',
                     borderRadius: '6px', fontSize: '0.75rem', fontFamily: 'var(--font-mono)', display: 'block', marginBottom: '0.25rem',
                   }}>{cmd}</code>
                 ))}

@@ -45,7 +45,7 @@ function Settings() {
             style={{
               display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1rem',
               background: activeSection === section.id
-                ? 'linear-gradient(135deg, rgba(74,158,255,0.15) 0%, rgba(168,85,247,0.15) 100%)'
+                ? 'linear-gradient(135deg, rgba(74,158,255,0.15) 0%, rgba(255,108,0,0.15) 100%)'
                 : 'var(--bg-glass)',
               color: activeSection === section.id ? 'var(--accent-blue)' : 'var(--text-secondary)',
               border: `1px solid ${activeSection === section.id ? 'rgba(74,158,255,0.3)' : 'var(--border-glass)'}`,
@@ -54,7 +54,7 @@ function Settings() {
             }}
             onMouseEnter={(e) => {
               if (activeSection !== section.id) {
-                e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                e.currentTarget.style.background = 'rgba(31,41,55,0.05)';
                 e.currentTarget.style.color = 'var(--text-primary)';
               }
             }}
@@ -133,7 +133,7 @@ function Settings() {
             }}>{tr('settings.aiModels')}</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <div style={{
-                padding: '1rem 1.25rem', background: 'linear-gradient(135deg, rgba(74,158,255,0.1) 0%, rgba(168,85,247,0.1) 100%)',
+                padding: '1rem 1.25rem', background: 'linear-gradient(135deg, rgba(74,158,255,0.1) 0%, rgba(255,108,0,0.1) 100%)',
                 borderRadius: '12px', border: '1px solid rgba(74,158,255,0.2)',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -165,7 +165,7 @@ function Settings() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <div style={{ padding: '1rem 1.25rem', background: 'var(--bg-glass)', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
                 <p style={{ color: 'var(--text-primary)', fontWeight: 500, marginBottom: '0.5rem' }}>📁 {tr('settings.docFolder')}</p>
-                <code style={{ fontSize: '0.8rem', color: 'var(--accent-blue)', background: 'rgba(15,15,25,0.8)', padding: '0.5rem 0.75rem', borderRadius: '8px', display: 'block', fontFamily: 'var(--font-mono)' }}>
+                <code style={{ fontSize: '0.8rem', color: 'var(--accent-blue)', background: '#ffffff', padding: '0.5rem 0.75rem', borderRadius: '8px', display: 'block', fontFamily: 'var(--font-mono)' }}>
                   {tr('settings.docFolderPath')}
                 </code>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.5rem' }}>{tr('settings.docFolderHint')}</p>
@@ -193,7 +193,7 @@ function Settings() {
             }}>{tr('settings.aboutTitle')}</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <div style={{
-                padding: '1.5rem', background: 'linear-gradient(135deg, rgba(74,158,255,0.08) 0%, rgba(168,85,247,0.08) 50%, rgba(236,72,153,0.08) 100%)',
+                padding: '1.5rem', background: 'linear-gradient(135deg, rgba(74,158,255,0.08) 0%, rgba(255,108,0,0.08) 50%, rgba(255,138,0,0.08) 100%)',
                 borderRadius: '16px', textAlign: 'center', border: '1px solid rgba(74,158,255,0.1)',
               }}>
                 <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>🧠</div>

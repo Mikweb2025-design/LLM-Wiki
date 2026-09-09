@@ -138,7 +138,7 @@ function CompareDocuments({ showToast }) {
               value={doc?.filename || ''}
               onChange={(e) => { const selected = documents.find(d => d.filename === e.target.value); setDoc(selected || null); }}
               style={{
-                width: '100%', background: 'rgba(15,15,25,0.8)', border: '1px solid var(--border-glass)',
+                width: '100%', background: '#ffffff', border: '1px solid var(--border-glass)',
                 borderRadius: '10px', padding: '0.6rem 0.8rem', color: 'var(--text-primary)',
                 fontSize: '0.85rem', fontFamily: 'var(--font-sans)', cursor: 'pointer', outline: 'none',
               }}
@@ -176,7 +176,7 @@ function CompareDocuments({ showToast }) {
       >
         {comparing ? (
           <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-            <div style={{ width: '16px', height: '16px', border: '2px solid rgba(15,15,25,0.1)', borderTop: '2px solid var(--bg-dark)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+            <div style={{ width: '16px', height: '16px', border: '2px solid #ffffff', borderTop: '2px solid var(--bg-dark)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
             {tr('compare.comparing')}
           </span>
         ) : (
@@ -230,7 +230,7 @@ function CompareDocuments({ showToast }) {
                 {result.totalLines1} righe totali
               </p>
             </div>
-            <div style={{ background: 'rgba(168,85,247,0.05)', border: '1px solid rgba(168,85,247,0.1)', borderRadius: '10px', padding: '0.75rem', textAlign: 'center' }}>
+            <div style={{ background: 'rgba(255,108,0,0.05)', border: '1px solid rgba(255,108,0,0.1)', borderRadius: '10px', padding: '0.75rem', textAlign: 'center' }}>
               <p style={{ color: 'var(--accent-purple)', fontSize: '0.85rem', fontWeight: 500 }}>{result.name2}</p>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
                 {result.totalLines2} righe totali
@@ -243,8 +243,8 @@ function CompareDocuments({ showToast }) {
               <div key={i} style={{
                 display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', padding: '0.5rem 0.75rem',
                 borderRadius: '8px', fontSize: '0.8rem', lineHeight: 1.5,
-                background: d.type === 'same' ? 'rgba(255,255,255,0.03)' : 'rgba(255,166,87,0.12)',
-                border: `1px solid ${d.type === 'same' ? 'rgba(255,255,255,0.08)' : 'rgba(255,166,87,0.3)'}`,
+                background: d.type === 'same' ? 'rgba(31,41,55,0.03)' : 'rgba(255,166,87,0.12)',
+                border: `1px solid ${d.type === 'same' ? 'rgba(31,41,55,0.08)' : 'rgba(255,166,87,0.3)'}`,
               }}>
                 <div style={{ color: d.type === 'same' ? 'var(--text-primary)' : '#ffcc88', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: d.type === 'diff' ? 500 : 400 }}>{d.l1 || '-'}</div>
                 <div style={{ color: d.type === 'same' ? 'var(--text-primary)' : '#ffcc88', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: d.type === 'diff' ? 500 : 400 }}>{d.l2 || '-'}</div>

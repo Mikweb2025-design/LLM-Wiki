@@ -136,7 +136,7 @@ export default function DiagnosticPanel() {
             width: '280px',
             background: 'var(--bg-glass, rgba(20, 22, 30, 0.95))',
             backdropFilter: 'blur(16px)',
-            border: '1px solid var(--border-glass, rgba(255,255,255,0.08))',
+            border: '1px solid var(--border-glass, rgba(31,41,55,0.08))',
             borderRadius: '14px',
             padding: '0.9rem',
             boxShadow: '0 12px 40px rgba(0,0,0,0.45)',
@@ -158,7 +158,7 @@ export default function DiagnosticPanel() {
               disabled={loading}
               style={{
                 background: 'transparent',
-                border: '1px solid var(--border-glass, rgba(255,255,255,0.12))',
+                border: '1px solid var(--border-glass, rgba(31,41,55,0.12))',
                 color: 'var(--text-secondary, #aab0bf)',
                 fontSize: '0.7rem',
                 padding: '0.2rem 0.55rem',
@@ -181,7 +181,7 @@ export default function DiagnosticPanel() {
           <div style={{
             marginTop: '0.85rem',
             paddingTop: '0.7rem',
-            borderTop: '1px solid var(--border-glass, rgba(255,255,255,0.08))',
+            borderTop: '1px solid var(--border-glass, rgba(31,41,55,0.08))',
             display: 'flex',
             justifyContent: 'space-between',
             fontSize: '0.7rem',
@@ -208,7 +208,7 @@ function Row({ ind }) {
       gap: '0.6rem',
       padding: '0.4rem 0.55rem',
       borderRadius: '10px',
-      background: 'rgba(255,255,255,0.025)',
+      background: 'rgba(31,41,55,0.025)',
       opacity: ind.dim ? 0.55 : 1,
     }}>
       <span style={{

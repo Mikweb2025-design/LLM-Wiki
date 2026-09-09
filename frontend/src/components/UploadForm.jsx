@@ -111,13 +111,13 @@ function UploadForm() {
         onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
         style={{
-          border: `2px dashed ${dragActive ? 'var(--accent-blue)' : 'rgba(255,255,255,0.1)'}`,
+          border: `2px dashed ${dragActive ? 'var(--accent-blue)' : 'rgba(31,41,55,0.1)'}`,
           borderRadius: '16px', padding: '3rem 2rem', textAlign: 'center',
-          background: dragActive ? 'rgba(74,158,255,0.05)' : 'rgba(255,255,255,0.02)',
+          background: dragActive ? 'rgba(74,158,255,0.05)' : 'rgba(31,41,55,0.02)',
           cursor: 'pointer', transition: 'all 0.3s', marginBottom: '1.5rem',
         }}
-        onMouseEnter={(e) => { if (!dragActive) e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; }}
-        onMouseLeave={(e) => { if (!dragActive) e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; }}
+        onMouseEnter={(e) => { if (!dragActive) e.currentTarget.style.borderColor = 'rgba(31,41,55,0.2)'; }}
+        onMouseLeave={(e) => { if (!dragActive) e.currentTarget.style.borderColor = 'rgba(31,41,55,0.1)'; }}
       >
         <div style={{ fontSize: '3rem', marginBottom: '1rem', opacity: 0.8 }}>📂</div>
         <p style={{ color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 500, marginBottom: '0.5rem' }}>
@@ -220,7 +220,7 @@ function UploadForm() {
 
       {/* Results */}
       {results.length > 0 && (
-        <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
+        <div style={{ padding: '1rem', background: 'rgba(31,41,55,0.02)', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
           <h3 style={{ color: 'var(--text-primary)', fontSize: '0.95rem', fontWeight: 500, marginBottom: '0.75rem' }}>{tr('upload.results')}</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {results.map((result, index) => (
