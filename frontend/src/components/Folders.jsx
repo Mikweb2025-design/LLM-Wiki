@@ -248,6 +248,62 @@ function HiDrivePanel({ showToast }) {
   const handleConnect = async () => {
     setLoadingConnect(true); setPickerError('');
     try {
+      // login seamless via popup (come Clumoove): il callback scambia da solo
+      const res = await hidriveApi.loginUrl();
+      const popup = window.open(res.data.authorize_url, 'hidrive-login', 'width=620,height=720');
+      if (!popup) {
+        setPickerError('Popup bloccato: consenti i popup per questo sito e riprova.');
+        setLoadingConnect(false);
+        return;
+      }
+      showToast?.(tr('folders.hidriveNeedCode'), 'info');
+      const onMsg = async (ev) => {
+        if (ev.origin !== 'https://migration.mikweb.eu' && ev.origin !== window.location.origin) return;
+        if (!ev.data || ev.data.hidrive !== 'connected') return;
+        window.removeEventListener('message', onMsg);
+        setConnected(true);
+        setCode('');
+        showToast?.(tr('folders.hidriveConnected'), 'success');
+        try {
+          const st = await hidriveApi.connect(null);
+          if (st.data.status === 'connected') {
+            setAccount(st.data.account || '');
+            browsePath('/');
+          }
+        } catch {}
+        const fl = await hidriveApi.listFolders();
+        setFolders(fl.data.folders || []);
+        setLoadingConnect(false);
+      };
+      window.addEventListener('message', onMsg);
+      // se il popup viene chiuso senza login, sblocca dopo un po'
+      const checkClosed = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(checkClosed);
+          window.removeEventListener('message', onMsg);
+          setLoadingConnect(false);
+        }
+      }, 1000);
+    } catch (e) {
+      // fallback: link + code incollato (redirect_uri Clumoove già registrato)
+      try {
+        const res = await hidriveApi.connect(null);
+        if (res.data.status === 'need_code' && res.data.authorize_url) {
+          setAuthUrl(res.data.authorize_url);
+          showToast?.(tr('folders.hidriveNeedCode'), 'info');
+        } else {
+          showToast?.(e.response?.data?.detail || e.message, 'error');
+        }
+      } catch (e2) {
+        const msg = e2.response?.data?.detail || e2.message;
+        setPickerError(msg); showToast?.(msg, 'error');
+      } finally { setLoadingConnect(false); }
+    }
+  };
+
+  const handleConfirmCode = async () => {
+    setLoadingConnect(true); setPickerError('');
+    try {
       const res = await hidriveApi.connect(code.trim() || null);
       const data = res.data;
       if (data.status === 'need_code') {
@@ -346,7 +402,7 @@ function HiDrivePanel({ showToast }) {
       {!connected && authUrl && (
         <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <input value={code} onChange={e => setCode(e.target.value)} placeholder={tr('folders.hidriveCodePlaceholder')} style={{ flex: '1 1 220px', background: 'rgba(15,15,25,0.85)', border: '1px solid var(--border-glass)', borderRadius: '10px', padding: '0.55rem 0.9rem', color: 'var(--text-primary)', fontSize: '0.82rem', fontFamily: 'var(--font-mono)' }} />
-          <button onClick={handleConnect} disabled={loadingConnect || !code.trim()} style={{ padding: '0.55rem 1.1rem', background: 'rgba(126,231,135,0.12)', color: 'var(--accent-green)', border: '1px solid rgba(126,231,135,0.25)', borderRadius: '10px', fontWeight: 600, cursor: (loadingConnect || !code.trim()) ? 'not-allowed' : 'pointer', opacity: (loadingConnect || !code.trim()) ? 0.6 : 1 }}>
+          <button onClick={handleConfirmCode} disabled={loadingConnect || !code.trim()} style={{ padding: '0.55rem 1.1rem', background: 'rgba(126,231,135,0.12)', color: 'var(--accent-green)', border: '1px solid rgba(126,231,135,0.25)', borderRadius: '10px', fontWeight: 600, cursor: (loadingConnect || !code.trim()) ? 'not-allowed' : 'pointer', opacity: (loadingConnect || !code.trim()) ? 0.6 : 1 }}>
             {tr('folders.hidriveConfirmCode')}
           </button>
         </div>

@@ -131,6 +131,7 @@ export const hidriveApi = {
   exchange: (code, redirect_uri) => api.post('/api/documents/hidrive/exchange', { code, redirect_uri }),
   // stile Nextcloud: login + picker + cartelle + sync
   connect: (code, redirect_uri) => api.post('/api/hidrive/connect', { code, redirect_uri }),
+  loginUrl: () => api.get('/api/hidrive/login-url'),
   browse: (path = '/') => api.get('/api/hidrive/browse', { params: { path } }),
   listFolders: () => api.get('/api/hidrive/folders'),
   addFolder: (remote_path, name) => api.post('/api/hidrive/folders', { remote_path, name }),

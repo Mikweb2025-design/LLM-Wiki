@@ -12,10 +12,13 @@ Flusso UI (tab Cartelle, pannello HiDrive):
      tracking su mtime invece che ETag; i file cancellati su HiDrive escono dall'indice)
 """
 import os
+import secrets
 import threading
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import HTMLResponse
 
 from app.config import DATA_DIR
 from app.utils.database import (
@@ -35,6 +38,18 @@ router = APIRouter(prefix="/api/hidrive", tags=["hidrive"])
 # Una sola sync alla volta (manuale o auto-sync daemon). Come il 409 degli scan.
 _sync_lock = threading.Lock()
 
+# Login seamless: state -> (timestamp, redirect_uri). Single instance, 10 min.
+_login_states: dict = {}
+_login_lock = threading.Lock()
+_LOGIN_TTL = 600.0
+
+# Callback ricevuta dal browser dopo authorize (deve essere registrata per l'app;
+# se HiDrive la rifiuta si usa il fallback code-incollato di /connect).
+DOK_CALLBACK_URI = os.getenv(
+    "HIDRIVE_DOK_CALLBACK",
+    "https://migration.mikweb.eu/dok/api/api/hidrive/callback",
+)
+
 
 def _to_picker_item(m: dict) -> dict:
     """Item in forma compatibile col picker WebDAV del frontend."""
@@ -45,6 +60,60 @@ def _to_picker_item(m: dict) -> dict:
         "size_bytes": m.get("size", 0),
         "mtime": m.get("mtime", 0),
     }
+
+
+@router.get("/login-url")
+async def hidrive_login_url():
+    """URL authorize per login seamless via popup (come Clumoove).
+
+    Genera uno state una-tantum, lo ricorda 10 min e restituisce l'URL da
+    aprire nel popup. Al ritorno HiDrive chiama GET /callback che scambia
+    il code da solo — nessun copia-incolla.
+    """
+    ok, cfg_err = hd.is_configured()
+    if not ok:
+        raise HTTPException(status_code=400, detail=cfg_err)
+    state = "llmwiki-" + secrets.token_urlsafe(16)
+    with _login_lock:
+        now = time.time()
+        for k in [k for k, (ts, _) in _login_states.items() if now - ts > _LOGIN_TTL]:
+            _login_states.pop(k, None)
+        _login_states[state] = (now, DOK_CALLBACK_URI)
+    return {"authorize_url": hd.authorize_url(redirect_uri=DOK_CALLBACK_URI, state=state)}
+
+
+@router.get("/callback", response_class=HTMLResponse)
+async def hidrive_callback(code: str = "", state: str = ""):
+    """Callback OAuth: HiDrive rimanda qui dopo authorize. Scambia il code da
+    solo e chiude il popup (nessun segreto nella pagina, solo esito)."""
+    ok_msg = ""
+    err_msg = ""
+    with _login_lock:
+        entry = _login_states.pop(state, None)
+    if not state or entry is None:
+        err_msg = "Sessione login scaduta o non valida: riprova da LLM-Wiki."
+    elif not code:
+        err_msg = "Autorizzazione negata o code mancante."
+    else:
+        _, redirect_uri = entry
+        ok, msg = hd.exchange_code(code, redirect_uri=redirect_uri)
+        if ok:
+            log_activity("hidrive_connected", details="login seamless via callback")
+            ok_msg = "HiDrive collegato! Puoi chiudere questa finestra."
+        else:
+            err_msg = msg
+    title = "HiDrive collegato ✓" if ok_msg else "HiDrive: errore"
+    body = ok_msg or err_msg
+    color = "#7ee787" if ok_msg else "#ff8a8a"
+    return f"""<!doctype html><html lang="it"><head><meta charset="utf-8"><title>{title}</title></head>
+<body style="background:#0f172a;color:#e2e8f0;font-family:system-ui;display:flex;height:100vh;align-items:center;justify-content:center;margin:0">
+<div style="text-align:center"><div style="font-size:3rem">{'✅' if ok_msg else '⚠️'}</div>
+<h2>{title}</h2><p style="color:{color}">{body}</p>
+<p style="font-size:.8rem;opacity:.7">Questa finestra si chiude da sola…</p></div>
+<script>
+try {{ window.opener && window.opener.postMessage({{hidrive: '{'connected' if ok_msg else 'error'}'}}, 'https://migration.mikweb.eu'); }} catch(e) {{}}
+setTimeout(function() {{ window.close(); }}, 4000);
+</script></body></html>"""
 
 
 @router.get("/status")
