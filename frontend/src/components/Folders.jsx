@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { webdavApi } from '../utils/api';
+import { webdavApi, hidriveApi } from '../utils/api';
 import { useI18n, t } from '../utils/i18n';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -210,6 +210,214 @@ function WebDAVPanel({ showToast }) {
   );
 }
 
+function HiDrivePanel({ showToast }) {
+  const { lang } = useI18n(); const tr = p => t(lang, p);
+  const [connected, setConnected] = useState(false);
+  const [account, setAccount] = useState('');
+  const [code, setCode] = useState('');
+  const [authUrl, setAuthUrl] = useState('');
+  const [folders, setFolders] = useState([]);
+  const [browsingPath, setBrowsingPath] = useState('/');
+  const [browseItems, setBrowseItems] = useState([]);
+  const [loadingConnect, setLoadingConnect] = useState(false);
+  const [syncingId, setSyncingId] = useState(null);
+  const [pickerError, setPickerError] = useState('');
+
+  const loadStatus = useCallback(async () => {
+    try {
+      const res = await hidriveApi.connect(null);
+      // connect senza code: se token presente -> connected + picker root
+      if (res.data.status === 'connected') {
+        setConnected(true);
+        setAccount(res.data.account || '');
+        setBrowsingPath('/');
+        browsePath('/');
+      } else if (res.data.status === 'need_code') {
+        setAuthUrl(res.data.authorize_url || '');
+      }
+    } catch {
+      // backend non raggiungibile o non connesso: resta in stato login
+    }
+    try {
+      const fl = await hidriveApi.listFolders();
+      setFolders(fl.data.folders || []);
+    } catch {}
+  }, []);
+  useEffect(() => { loadStatus(); }, [loadStatus]);
+
+  const handleConnect = async () => {
+    setLoadingConnect(true); setPickerError('');
+    try {
+      const res = await hidriveApi.connect(code.trim() || null);
+      const data = res.data;
+      if (data.status === 'need_code') {
+        setAuthUrl(data.authorize_url || '');
+        showToast?.(tr('folders.hidriveNeedCode'), 'info');
+      } else {
+        setConnected(true);
+        setAccount(data.account || '');
+        setCode('');
+        showToast?.(tr('folders.hidriveConnected'), 'success');
+        browsePath('/');
+      }
+      const fl = await hidriveApi.listFolders();
+      setFolders(fl.data.folders || []);
+    } catch (e) {
+      const msg = e.response?.data?.detail || e.message;
+      setPickerError(msg); showToast?.(msg, 'error');
+    } finally { setLoadingConnect(false); }
+  };
+
+  const browsePath = async (path) => {
+    try {
+      const res = await hidriveApi.browse(path);
+      setBrowseItems(res.data.all || []);
+      setBrowsingPath(res.data.path || path);
+      setPickerError('');
+    } catch (e) {
+      setPickerError(e.response?.data?.detail || e.message);
+    }
+  };
+
+  const addFolderFromPicker = async (remotePath, nameHint) => {
+    try {
+      const res = await hidriveApi.addFolder(remotePath, nameHint);
+      showToast?.(`Cartella HiDrive aggiunta: ${res.data.name} → sync disponibile`, 'success');
+      const fl = await hidriveApi.listFolders();
+      setFolders(fl.data.folders || []);
+    } catch (e) {
+      showToast?.(e.response?.data?.detail || e.message, 'error');
+    }
+  };
+
+  const handleSync = async (id) => {
+    setSyncingId(id);
+    try {
+      const res = await hidriveApi.sync(id);
+      const d = res.data;
+      showToast?.(`Sync: +${d.added} nuovi ~${d.updated} aggiornati -${d.deleted} rimossi`, 'success');
+      const fl = await hidriveApi.listFolders();
+      setFolders(fl.data.folders || []);
+    } catch (e) {
+      showToast?.(e.response?.data?.detail || e.message, 'error');
+    } finally { setSyncingId(null); }
+  };
+  const handleSyncAll = async () => {
+    setSyncingId('all');
+    try {
+      const res = await hidriveApi.syncAll();
+      const tot = (res.data.results || []).reduce((s, r) => s + (r.added || 0), 0);
+      showToast?.(`Sync tutte: ${tot} nuovi file`, 'success');
+      const fl = await hidriveApi.listFolders();
+      setFolders(fl.data.folders || []);
+    } catch (e) { showToast?.(e.response?.data?.detail || e.message, 'error'); }
+    finally { setSyncingId(null); }
+  };
+  const handleDelete = async (id, name) => {
+    if (!confirm(`${tr('folders.confirmRemove')} "${name}"? I documenti già indicizzati resteranno.`)) return;
+    try { await hidriveApi.deleteFolder(id); showToast?.(tr('common.remove'), 'success'); const fl = await hidriveApi.listFolders(); setFolders(fl.data.folders || []); } catch (e) { showToast?.(e.response?.data?.detail || e.message, 'error'); }
+  };
+
+  const crumbs = browsingPath.split('/').filter(Boolean);
+  const breadPaths = ['/', ...crumbs.map((_, i) => '/' + crumbs.slice(0, i + 1).join('/'))];
+
+  return (
+    <div style={{ background: 'var(--bg-glass)', border: '1px solid var(--border-glass)', borderRadius: '14px', padding: '1.25rem', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+        <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+          <span style={{ background: 'linear-gradient(135deg,#a855f7,#38bdf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>☁️</span> {tr('folders.hidriveTitle')}
+          {connected && <span style={{ fontSize: '0.65rem', padding: '0.15rem 0.45rem', borderRadius: '6px', background: 'rgba(126,231,135,0.12)', color: 'var(--accent-green)', border: '1px solid rgba(126,231,135,0.2)', fontFamily: 'var(--font-mono)' }}>{account || '✓'}</span>}
+        </h3>
+        {folders.length > 0 && <button onClick={handleSyncAll} disabled={syncingId === 'all'} style={{ fontSize: '0.75rem', background: syncingId === 'all' ? 'rgba(74,158,255,0.08)' : 'rgba(74,158,255,0.12)', color: 'var(--accent-blue)', border: '1px solid rgba(74,158,255,0.2)', borderRadius: '8px', padding: '0.3rem 0.7rem', cursor: syncingId === 'all' ? 'not-allowed' : 'pointer', opacity: syncingId === 'all' ? 0.6 : 1 }}>{syncingId === 'all' ? `⏳ ${tr('folders.syncing')}` : `🔄 ${tr('folders.syncAll')}`}</button>}
+      </div>
+      <p style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', lineHeight: 1.5, margin: '0 0 0.9rem 0' }}>
+        {tr('folders.hidriveDesc')}
+      </p>
+
+      {/* Login OAuth */}
+      {!connected && (
+        <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button onClick={handleConnect} disabled={loadingConnect} style={{ padding: '0.55rem 1.1rem', background: loadingConnect ? 'rgba(168,85,247,0.08)' : 'linear-gradient(135deg, rgba(168,85,247,0.18), rgba(56,189,248,0.18))', color: 'var(--accent-purple)', border: '1px solid rgba(168,85,247,0.25)', borderRadius: '10px', fontWeight: 600, cursor: loadingConnect ? 'not-allowed' : 'pointer', opacity: loadingConnect ? 0.6 : 1 }}>
+            {loadingConnect ? `⏳ ${tr('folders.hidriveConnecting')}` : `🔌 ${tr('folders.hidriveConnect')}`}
+          </button>
+          {authUrl && <a href={authUrl} target="_blank" rel="noreferrer" style={{ fontSize: '0.8rem', color: 'var(--accent-blue)' }}>🔗 {tr('folders.hidriveOpenAuth')}</a>}
+        </div>
+      )}
+      {!connected && authUrl && (
+        <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <input value={code} onChange={e => setCode(e.target.value)} placeholder={tr('folders.hidriveCodePlaceholder')} style={{ flex: '1 1 220px', background: 'rgba(15,15,25,0.85)', border: '1px solid var(--border-glass)', borderRadius: '10px', padding: '0.55rem 0.9rem', color: 'var(--text-primary)', fontSize: '0.82rem', fontFamily: 'var(--font-mono)' }} />
+          <button onClick={handleConnect} disabled={loadingConnect || !code.trim()} style={{ padding: '0.55rem 1.1rem', background: 'rgba(126,231,135,0.12)', color: 'var(--accent-green)', border: '1px solid rgba(126,231,135,0.25)', borderRadius: '10px', fontWeight: 600, cursor: (loadingConnect || !code.trim()) ? 'not-allowed' : 'pointer', opacity: (loadingConnect || !code.trim()) ? 0.6 : 1 }}>
+            {tr('folders.hidriveConfirmCode')}
+          </button>
+        </div>
+      )}
+      {pickerError && <div style={{ background: 'rgba(255,85,85,0.08)', border: '1px solid rgba(255,85,85,0.18)', color: '#ff8a8a', borderRadius: '8px', padding: '0.5rem 0.8rem', fontSize: '0.78rem', marginBottom: '0.7rem' }}>⚠ {pickerError}</div>}
+
+      {/* Browse picker dopo login */}
+      {connected && (
+        <div style={{ background: 'rgba(15,15,25,0.5)', border: '1px solid var(--border-glass)', borderRadius: '12px', padding: '0.9rem 1rem', marginBottom: '0.9rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>📂 {tr('folders.hidriveBrowseTitle')}</span>
+            <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+              {breadPaths.map((p, i) => (
+                <button key={p} onClick={() => browsePath(p)} style={{ background: p === browsingPath ? 'rgba(168,85,247,0.15)' : 'rgba(255,255,255,0.04)', color: p === browsingPath ? 'var(--accent-purple)' : 'var(--text-secondary)', border: '1px solid var(--border-glass)', borderRadius: '6px', padding: '0.15rem 0.45rem', fontSize: '0.72rem', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>{i === 0 ? tr('folders.browseRoot') : p.split('/').pop()}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.6rem', flexWrap: 'wrap' }}>
+            <button onClick={() => addFolderFromPicker(browsingPath, browsingPath.split('/').pop() || 'root')} style={{ fontSize: '0.78rem', background: 'rgba(126,231,135,0.12)', color: 'var(--accent-green)', border: '1px solid rgba(126,231,135,0.25)', borderRadius: '8px', padding: '0.35rem 0.75rem', cursor: 'pointer', fontWeight: 600 }}>＋ {tr('folders.indexThisFolder')} ({browsingPath})</button>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', alignSelf: 'center' }}>{browseItems.length} {tr('folders.elements')}</span>
+          </div>
+          <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            {browseItems.filter(it => it.is_collection).length === 0 && browseItems.length > 0 && <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{tr('folders.noSubfolders')}</span>}
+            {browseItems.filter(it => it.is_collection).map(it => {
+              const childPath = (browsingPath.replace(/\/$/, '') || '') + '/' + it.filename;
+              return (
+                <div key={it.href} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.4rem 0.6rem', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid transparent' }}>
+                  <button onClick={() => browsePath(childPath)} style={{ background: 'none', border: 'none', color: 'var(--accent-purple)', cursor: 'pointer', fontSize: '0.85rem', textAlign: 'left' }}>📁 {it.filename}</button>
+                  <button onClick={() => addFolderFromPicker(childPath, it.filename)} style={{ fontSize: '0.72rem', background: 'rgba(168,85,247,0.1)', color: 'var(--accent-purple)', border: '1px solid rgba(168,85,247,0.2)', borderRadius: '6px', padding: '0.2rem 0.5rem', cursor: 'pointer' }}>＋ {tr('folders.indexThisFolder')}</button>
+                </div>
+              );
+            })}
+            {browseItems.filter(it => !it.is_collection).slice(0, 8).map(it => (
+              <div key={it.href} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.2rem 0.6rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                <span>📄 {it.filename}</span><span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}>{(it.size_bytes / 1024).toFixed(1)} KB</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Folders list */}
+      {folders.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '1.2rem', color: 'var(--text-secondary)', fontSize: '0.85rem', border: '1px dashed var(--border-glass)', borderRadius: '10px' }}>
+          {tr('folders.hidriveNoFolders')}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {folders.map(s => (
+            <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.85rem 1rem', background: 'rgba(15,15,25,0.55)', borderRadius: '12px', border: '1px solid var(--border-glass)', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: '180px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem' }}>☁️ {s.name}</span>
+                  <span style={{ fontSize: '0.65rem', padding: '0.15rem 0.4rem', borderRadius: '6px', background: 'rgba(168,85,247,0.12)', color: 'var(--accent-purple)', border: '1px solid rgba(168,85,247,0.2)', fontFamily: 'var(--font-mono)' }}>HiDrive</span>
+                  <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.45rem', borderRadius: '6px', background: s.last_status?.startsWith('ok') ? 'rgba(126,231,135,0.1)' : s.last_status ? 'rgba(255,166,87,0.1)' : 'rgba(255,255,255,0.05)', color: s.last_status?.startsWith('ok') ? 'var(--accent-green)' : s.last_status ? '#ffa657' : 'var(--text-secondary)', border: `1px solid ${s.last_status?.startsWith('ok') ? 'rgba(126,231,135,0.2)' : 'var(--border-glass)'}`, fontFamily: 'var(--font-mono)' }}>{s.last_status || 'mai sincronizzato'}</span>
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '0.25rem', wordBreak: 'break-all' }}>hidrive:{s.remote_path}</div>
+                {s.last_sync && <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>{tr('folders.lastSync')}: {new Date(s.last_sync).toLocaleString(lang === 'de' ? 'de-DE' : lang === 'en' ? 'en-US' : 'it-IT')}</div>}
+              </div>
+              <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                <button onClick={() => handleSync(s.id)} disabled={syncingId === s.id} style={{ padding: '0.4rem 0.8rem', background: syncingId === s.id ? 'rgba(74,158,255,0.06)' : 'rgba(74,158,255,0.12)', color: 'var(--accent-blue)', border: '1px solid rgba(74,158,255,0.2)', borderRadius: '8px', fontSize: '0.8rem', cursor: syncingId === s.id ? 'not-allowed' : 'pointer', opacity: syncingId === s.id ? 0.6 : 1 }}>{syncingId === s.id ? `⏳ ${tr('folders.syncing')}` : `🔄 ${tr('folders.syncNow')}`}</button>
+                <button onClick={() => handleDelete(s.id, s.name)} style={{ padding: '0.4rem 0.7rem', background: 'rgba(255,85,85,0.06)', color: '#ff7a7a', border: '1px solid rgba(255,85,85,0.18)', borderRadius: '8px', fontSize: '0.8rem', cursor: 'pointer' }}>{tr('common.remove')}</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Folders({ showToast }) {
   const { lang } = useI18n(); const tr = p => t(lang,p);
   const [folders, setFolders] = useState([]);
@@ -339,6 +547,9 @@ export default function Folders({ showToast }) {
 
       {/* WebDAV Panel — NEW */}
       <WebDAVPanel showToast={showToast} />
+
+      {/* HiDrive Panel — OAuth login + folder picker + sync */}
+      <HiDrivePanel showToast={showToast} />
 
       <div style={{ height:'1px', background:'var(--border-glass)', margin:'1.2rem 0' }} />
 
@@ -532,6 +743,7 @@ export default function Folders({ showToast }) {
         <ul style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', lineHeight: 1.8, paddingLeft: '1.25rem' }}>
           <li>{tr('folders.howItWorksLocal')}</li>
           <li>{tr('folders.howItWorksNextcloud')}</li>
+          <li>{tr('folders.howItWorksHidrive')}</li>
           <li>{tr('folders.howItWorksDelete')}</li>
         </ul>
       </div>

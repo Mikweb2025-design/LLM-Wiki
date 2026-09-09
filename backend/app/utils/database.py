@@ -127,6 +127,33 @@ def init_db():
             FOREIGN KEY(source_id) REFERENCES webdav_sources(id) ON DELETE CASCADE
         )
     """)
+    # HiDrive (REST OAuth2, stessa app di Clumoove) — cartelle + tracking mtime.
+    # Il token OAuth è globale (file hidrive_token.json), non per-cartella.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS hidrive_folders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            remote_path TEXT NOT NULL DEFAULT '/',
+            active INTEGER DEFAULT 1,
+            last_sync TIMESTAMP,
+            last_status TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS hidrive_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            folder_id INTEGER NOT NULL,
+            path TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            mtime REAL DEFAULT 0,
+            size_bytes INTEGER,
+            chash TEXT,
+            indexed_at TIMESTAMP,
+            UNIQUE(folder_id, path),
+            FOREIGN KEY(folder_id) REFERENCES hidrive_folders(id) ON DELETE CASCADE
+        )
+    """)
     # Indici per performance (query frequenti)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_extension ON documents(extension)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_created ON documents(created_at DESC)")
@@ -590,6 +617,98 @@ def delete_webdav_file(source_id: int, href: str):
     try:
         conn = get_db_connection()
         conn.execute("DELETE FROM webdav_files WHERE source_id=? AND href=?", (source_id, href))
+        conn.commit()
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# HiDrive — cartelle monitorate + tracking mtime (mirror WebDAV/Nextcloud)
+# ---------------------------------------------------------------------------
+
+def add_hidrive_folder(name: str, remote_path: str = "/") -> int:
+    conn = get_db_connection()
+    if not remote_path.startswith("/"):
+        remote_path = "/" + remote_path
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO hidrive_folders (name, remote_path, active)
+        VALUES (?, ?, 1)
+        ON CONFLICT(name) DO UPDATE SET remote_path=excluded.remote_path, active=1
+    """, (name, remote_path))
+    conn.commit()
+    cur.execute("SELECT id FROM hidrive_folders WHERE name=?", (name,))
+    row = cur.fetchone()
+    log_activity("hidrive_folder_added", name, remote_path)
+    return row["id"] if row else -1
+
+
+def get_hidrive_folders() -> List[Dict]:
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, name, remote_path, active, last_sync, last_status, created_at FROM hidrive_folders ORDER BY name")
+    return [dict(r) for r in cur.fetchall()]
+
+
+def get_hidrive_folder(folder_id: int = None, name: str = None) -> Optional[Dict]:
+    conn = get_db_connection()
+    cur = conn.cursor()
+    if folder_id is not None:
+        cur.execute("SELECT * FROM hidrive_folders WHERE id=?", (folder_id,))
+    elif name is not None:
+        cur.execute("SELECT * FROM hidrive_folders WHERE name=?", (name,))
+    else:
+        return None
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def remove_hidrive_folder(folder_id: int) -> bool:
+    try:
+        conn = get_db_connection()
+        conn.execute("DELETE FROM hidrive_folders WHERE id=?", (folder_id,))
+        conn.commit()
+        log_activity("hidrive_folder_removed", str(folder_id))
+        return True
+    except Exception:
+        return False
+
+
+def update_hidrive_sync_status(folder_id: int, status: str, last_sync: str = None):
+    try:
+        import datetime as _dt
+        ts = last_sync or _dt.datetime.now().isoformat()
+        conn = get_db_connection()
+        conn.execute("UPDATE hidrive_folders SET last_status=?, last_sync=? WHERE id=?", (status, ts, folder_id))
+        conn.commit()
+    except Exception:
+        pass
+
+
+def upsert_hidrive_file(folder_id: int, path: str, filename: str, mtime: float, size_bytes: int, chash: str):
+    try:
+        conn = get_db_connection()
+        conn.execute("""
+            INSERT INTO hidrive_files (folder_id, path, filename, mtime, size_bytes, chash)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(folder_id, path) DO UPDATE SET filename=excluded.filename, mtime=excluded.mtime, size_bytes=excluded.size_bytes, chash=excluded.chash
+        """, (folder_id, path, filename, mtime or 0, size_bytes, chash))
+        conn.commit()
+    except Exception as e:
+        print(f"[WARN] upsert_hidrive_file {e}")
+
+
+def get_hidrive_files(folder_id: int) -> List[Dict]:
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM hidrive_files WHERE folder_id=? ORDER BY filename", (folder_id,))
+    return [dict(r) for r in cur.fetchall()]
+
+
+def delete_hidrive_file(folder_id: int, path: str):
+    try:
+        conn = get_db_connection()
+        conn.execute("DELETE FROM hidrive_files WHERE folder_id=? AND path=?", (folder_id, path))
         conn.commit()
     except Exception:
         pass

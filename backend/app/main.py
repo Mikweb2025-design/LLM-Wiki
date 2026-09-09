@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
 from app.utils.database import init_db
-from app.routers import chat, documents, voice, status, analytics, webdav
+from app.routers import chat, documents, voice, status, analytics, webdav, hidrive
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +88,7 @@ app.include_router(voice.router)
 app.include_router(status.router)
 app.include_router(analytics.router)
 app.include_router(webdav.router)
+app.include_router(hidrive.router)
 
 
 @app.get("/")

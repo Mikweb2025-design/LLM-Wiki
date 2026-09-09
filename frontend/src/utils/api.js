@@ -129,6 +129,15 @@ export const hidriveApi = {
   status: () => api.get('/api/documents/hidrive/status'),
   authUrl: (redirect_uri) => api.get('/api/documents/hidrive/auth-url', { params: { redirect_uri } }),
   exchange: (code, redirect_uri) => api.post('/api/documents/hidrive/exchange', { code, redirect_uri }),
+  // stile Nextcloud: login + picker + cartelle + sync
+  connect: (code, redirect_uri) => api.post('/api/hidrive/connect', { code, redirect_uri }),
+  browse: (path = '/') => api.get('/api/hidrive/browse', { params: { path } }),
+  listFolders: () => api.get('/api/hidrive/folders'),
+  addFolder: (remote_path, name) => api.post('/api/hidrive/folders', { remote_path, name }),
+  deleteFolder: (folder_id) => api.delete(`/api/hidrive/folders/${folder_id}`),
+  sync: (folder_id, max_files = 100) => api.post('/api/hidrive/sync', { folder_id, max_files }),
+  syncAll: (max_files = 100) => api.post('/api/hidrive/sync', { all: true, max_files }),
+  files: (folder_id) => api.get('/api/hidrive/files', { params: { folder_id } }),
 };
 
 export default api;
