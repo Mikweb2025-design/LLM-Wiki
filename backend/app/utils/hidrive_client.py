@@ -59,6 +59,93 @@ DIR_PAGE_SIZE = 5000
 _TOKEN_FILE = DATA_DIR / "hidrive_token.json"
 _refresh_lock = threading.Lock()
 
+# ---------------------------------------------------------------------------
+# Token condiviso da Clumoove (stesso metodo, zero nuovo login).
+# Clumoove salva in connection_profiles (postgres):
+#   password_encrypted (access, domain clumoove:oauth-access-token),
+#   refresh_token_encrypted (domain clumoove:oauth-refresh-token),
+#   token_expires_at.
+# Cifratura: AES-256-GCM, key = SHA256(ENCRYPTION_SECRET_KEY),
+# envelope "v1:" + hex(nonce12 + sealed), AAD = domain.
+# (cfr. /opt/clumoove/backend/internal/crypto/crypto.go +
+#  restore/coordinator.go ensureFreshRepositoryOAuthToken)
+# Lettura SOLA: i token rinnovati restano nel file locale di llm-wiki.
+# ---------------------------------------------------------------------------
+_CLUMOOVE_DOMAIN_ACCESS = "clumoove:oauth-access-token"
+_CLUMOOVE_DOMAIN_REFRESH = "clumoove:oauth-refresh-token"
+_shared_warn_done = False
+_shared_cache: Dict = {"ts": 0.0, "profile": None}
+_SHARED_CACHE_TTL = 60.0
+
+
+def _get_shared_profile_cached() -> Optional[Dict]:
+    now = time.time()
+    if (now - _shared_cache["ts"]) < _SHARED_CACHE_TTL:
+        return _shared_cache["profile"]
+    prof = _read_shared_profile()
+    _shared_cache.update(ts=now, profile=prof)
+    return prof
+
+
+def _clumoove_decrypt(envelope: str, secret: str, domain: str) -> str:
+    """Replica DecryptWithDomain di Clumoove."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    import hashlib
+    import binascii
+
+    if not envelope or not envelope.startswith("v1:"):
+        raise ValueError("envelope non v1")
+    raw = binascii.unhexlify(envelope[3:])
+    if len(raw) < 12 + 16:
+        raise ValueError("envelope troppo corto")
+    nonce, sealed = raw[:12], raw[12:]
+    key = hashlib.sha256(secret.encode()).digest()
+    return AESGCM(key).decrypt(nonce, sealed, domain.encode()).decode("utf-8")
+
+
+def _read_shared_profile() -> Optional[Dict]:
+    """Legge l'ultimo profilo hidrive da Clumoove (solo nomi in log, mai segreti)."""
+    db_url = (os.getenv("CLUMOOVE_DB_URL") or "").strip()
+    secret = (os.getenv("CLUMOOVE_ENCRYPTION_KEY") or "").strip()
+    if not db_url or not secret:
+        return None
+    try:
+        import psycopg
+        with psycopg.connect(db_url, connect_timeout=8) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT password_encrypted, refresh_token_encrypted, token_expires_at
+                       FROM connection_profiles WHERE provider='hidrive'
+                       ORDER BY updated_at DESC LIMIT 1"""
+                )
+                row = cur.fetchone()
+        if not row:
+            return None
+        access_enc, refresh_enc, expires_at = row
+        try:
+            access = _clumoove_decrypt(access_enc or "", secret, _CLUMOOVE_DOMAIN_ACCESS) if access_enc else ""
+        except Exception:
+            access = ""
+        try:
+            refresh = _clumoove_decrypt(refresh_enc or "", secret, _CLUMOOVE_DOMAIN_REFRESH) if refresh_enc else ""
+        except Exception:
+            refresh = ""
+        exp_ts = 0.0
+        try:
+            if expires_at is not None:
+                exp_ts = expires_at.timestamp() if hasattr(expires_at, "timestamp") else float(expires_at)
+        except Exception:
+            exp_ts = 0.0
+        if not access and not refresh:
+            return None
+        return {"access_token": access, "refresh_token": refresh, "expires_at": exp_ts}
+    except Exception as e:
+        global _shared_warn_done
+        if not _shared_warn_done:
+            print(f"[WARN] HiDrive token condiviso non leggibile: {type(e).__name__}")
+            _shared_warn_done = True
+        return None
+
 
 def _redact(msg: str) -> str:
     """Rimuove eventuali token finiti per sbaglio in un messaggio di errore."""
@@ -107,7 +194,13 @@ def _write_token_file(data: Dict) -> None:
 
 
 def _seeded_refresh_token() -> str:
-    """Refresh token noto: file cache prima, .env come seed."""
+    """Refresh token noto: condiviso Clumoove prima, file cache poi, .env come seed."""
+    try:
+        prof = _get_shared_profile_cached()
+        if prof and prof.get("refresh_token"):
+            return prof["refresh_token"]
+    except Exception:
+        pass
     cached = _read_token_file().get("refresh_token") or ""
     if cached:
         return cached
@@ -205,8 +298,18 @@ def _refresh_access_token() -> Tuple[bool, str]:
 
 
 def get_access_token() -> Tuple[bool, str]:
-    """Access token valido (cache o refresh automatico). Thread-safe."""
+    """Access token valido (cache o refresh automatico). Thread-safe.
+
+    Come Clumoove (ensureFreshRepositoryOAuthToken): se il profilo condiviso
+    ha un access token ancora fresco lo riusa diretto, altrimenti refresh.
+    """
     with _refresh_lock:
+        try:
+            prof = _get_shared_profile_cached()
+            if prof and prof.get("access_token") and (prof.get("expires_at") or 0) - time.time() > 120:
+                return True, prof["access_token"]
+        except Exception:
+            pass
         cached = _read_token_file()
         token = (cached.get("access_token") or "").strip()
         expires_at = float(cached.get("expires_at") or 0)
@@ -391,9 +494,14 @@ def hidrive_status() -> Dict:
     """Stato configurazione (senza mai esporre segreti)."""
     ok_cfg, cfg_msg = is_configured()
     token_file = _read_token_file()
+    try:
+        shared = bool((_get_shared_profile_cached() or {}).get("refresh_token"))
+    except Exception:
+        shared = False
     return {
         "configured": ok_cfg,
         "config_error": None if ok_cfg else cfg_msg,
+        "shared_profile": shared,
         "has_refresh_token": bool(_seeded_refresh_token()),
         "has_access_token_cached": bool(token_file.get("access_token")),
         "token_expires_in": max(0, int(float(token_file.get("expires_at") or 0) - time.time())) if token_file.get("expires_at") else 0,
