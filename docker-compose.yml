@@ -19,9 +19,18 @@ services:
       - ./backend/data:/app/data
       - ./backend/chroma_db:/app/chroma_db
     restart: unless-stopped
+    networks:
+      - default
+      # rete Clumoove: serve a leggere (sola lettura) il token HiDrive condiviso
+      # da connection_profiles su postgres-db (stesso metodo dell'app Clumoove)
+      - clumoove_migration-network
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=5)\""]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 90s
+
+networks:
+  clumoove_migration-network:
+    external: true
