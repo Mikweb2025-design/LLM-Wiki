@@ -12,6 +12,7 @@ Flusso UI (tab Cartelle, pannello HiDrive):
      tracking su mtime invece che ETag; i file cancellati su HiDrive escono dall'indice)
 """
 import os
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -19,7 +20,7 @@ from fastapi import APIRouter, HTTPException
 from app.config import DATA_DIR
 from app.utils.database import (
     add_hidrive_folder, get_hidrive_folders, get_hidrive_folder,
-    remove_hidrive_folder, update_hidrive_sync_status,
+    remove_hidrive_folder, update_hidrive_sync_status, update_hidrive_folder,
     upsert_hidrive_file, get_hidrive_files, delete_hidrive_file,
     add_document, remove_document, get_document,
     log_activity,
@@ -30,6 +31,9 @@ from app.utils.vector_store import add_document_to_store, remove_document_from_s
 from app.utils.auto_tagger import auto_tag_document
 
 router = APIRouter(prefix="/api/hidrive", tags=["hidrive"])
+
+# Una sola sync alla volta (manuale o auto-sync daemon). Come il 409 degli scan.
+_sync_lock = threading.Lock()
 
 
 def _to_picker_item(m: dict) -> dict:
@@ -270,25 +274,30 @@ def _sync_one_folder(folder_id: int, max_files: int = 100) -> dict:
 async def hidrive_sync(payload: dict):
     """Sync una cartella ({folder_id} o {name}) oppure tutte ({all:true})."""
     max_files = int(payload.get("max_files") or 100)
-    if payload.get("all"):
-        results = []
-        for f in get_hidrive_folders():
-            r = _sync_one_folder(f["id"], max_files=max_files)
-            results.append({"folder": f["name"], "id": f["id"], **r})
-        return {"results": results}
-    folder_id = payload.get("folder_id") or payload.get("id")
-    name = payload.get("name")
-    target = None
-    if folder_id:
-        target = get_hidrive_folder(folder_id=int(folder_id))
-    elif name:
-        target = get_hidrive_folder(name=name)
-    if not target:
-        raise HTTPException(status_code=404, detail="Cartella non trovata (folder_id o name richiesto)")
-    result = _sync_one_folder(int(target["id"]), max_files=max_files)
-    if "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return {"folder_id": int(target["id"]), **result}
+    if not _sync_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="Sync già in corso (manuale o automatico)")
+    try:
+        if payload.get("all"):
+            results = []
+            for f in get_hidrive_folders():
+                r = _sync_one_folder(f["id"], max_files=max_files)
+                results.append({"folder": f["name"], "id": f["id"], **r})
+            return {"results": results}
+        folder_id = payload.get("folder_id") or payload.get("id")
+        name = payload.get("name")
+        target = None
+        if folder_id:
+            target = get_hidrive_folder(folder_id=int(folder_id))
+        elif name:
+            target = get_hidrive_folder(name=name)
+        if not target:
+            raise HTTPException(status_code=404, detail="Cartella non trovata (folder_id o name richiesto)")
+        result = _sync_one_folder(int(target["id"]), max_files=max_files)
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        return {"folder_id": int(target["id"]), **result}
+    finally:
+        _sync_lock.release()
 
 
 @router.post("/sync/{folder_id}")
@@ -296,7 +305,33 @@ async def hidrive_sync_by_id(folder_id: int, max_files: int = 100):
     f = get_hidrive_folder(folder_id=folder_id)
     if not f:
         raise HTTPException(status_code=404, detail="Cartella non trovata")
-    result = _sync_one_folder(folder_id, max_files=max_files)
+    if not _sync_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="Sync già in corso (manuale o automatico)")
+    try:
+        result = _sync_one_folder(folder_id, max_files=max_files)
+    finally:
+        _sync_lock.release()
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return {"folder_id": folder_id, **result}
+
+
+@router.put("/folders/{folder_id}")
+async def hidrive_update_folder(folder_id: int, payload: dict):
+    """Aggiorna intervallo auto-sync (minuti, min 5) e/o flag active."""
+    from app.utils.database import update_hidrive_folder as _upd
+    f = get_hidrive_folder(folder_id=folder_id)
+    if not f:
+        raise HTTPException(status_code=404, detail="Cartella non trovata")
+    interval = payload.get("sync_interval_minutes")
+    active = payload.get("active")
+    if interval is None and active is None:
+        raise HTTPException(status_code=400, detail="sync_interval_minutes o active richiesto")
+    try:
+        interval = None if interval is None else int(interval)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="sync_interval_minutes non valido")
+    ok = _upd(folder_id, sync_interval_minutes=interval, active=active)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Errore aggiornamento")
+    return {"status": "updated", **get_hidrive_folder(folder_id=folder_id)}

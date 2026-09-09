@@ -137,6 +137,7 @@ def init_db():
             active INTEGER DEFAULT 1,
             last_sync TIMESTAMP,
             last_status TEXT,
+            sync_interval_minutes INTEGER DEFAULT 60,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -163,12 +164,21 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tags_tag ON document_tags(tag)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_webdav_href ON webdav_files(href)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_webdav_source ON webdav_files(source_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_hidrive_path ON hidrive_files(path)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_hidrive_folder ON hidrive_files(folder_id)")
     conn.commit()
     # Migrazione: aggiungi colonne mancanti se DB vecchio
     try:
         cols = [r[1] for r in cursor.execute("PRAGMA table_info(webdav_sources)").fetchall()]
         if "sync_interval_minutes" not in cols:
             cursor.execute("ALTER TABLE webdav_sources ADD COLUMN sync_interval_minutes INTEGER DEFAULT 15")
+            conn.commit()
+    except Exception:
+        pass
+    try:
+        hcols = [r[1] for r in cursor.execute("PRAGMA table_info(hidrive_folders)").fetchall()]
+        if "sync_interval_minutes" not in hcols:
+            cursor.execute("ALTER TABLE hidrive_folders ADD COLUMN sync_interval_minutes INTEGER DEFAULT 60")
             conn.commit()
     except Exception:
         pass
@@ -646,7 +656,7 @@ def add_hidrive_folder(name: str, remote_path: str = "/") -> int:
 def get_hidrive_folders() -> List[Dict]:
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, name, remote_path, active, last_sync, last_status, created_at FROM hidrive_folders ORDER BY name")
+    cur.execute("SELECT id, name, remote_path, active, last_sync, last_status, sync_interval_minutes, created_at FROM hidrive_folders ORDER BY name")
     return [dict(r) for r in cur.fetchall()]
 
 
@@ -683,6 +693,27 @@ def update_hidrive_sync_status(folder_id: int, status: str, last_sync: str = Non
         conn.commit()
     except Exception:
         pass
+
+
+def update_hidrive_folder(folder_id: int, sync_interval_minutes: int = None, active: int = None) -> bool:
+    """Aggiorna intervallo auto-sync / flag active di una cartella."""
+    try:
+        conn = get_db_connection()
+        sets, params = [], []
+        if sync_interval_minutes is not None:
+            sets.append("sync_interval_minutes=?")
+            params.append(max(5, int(sync_interval_minutes)))
+        if active is not None:
+            sets.append("active=?")
+            params.append(1 if active else 0)
+        if not sets:
+            return False
+        params.append(folder_id)
+        conn.execute(f"UPDATE hidrive_folders SET {', '.join(sets)} WHERE id=?", params)
+        conn.commit()
+        return True
+    except Exception:
+        return False
 
 
 def upsert_hidrive_file(folder_id: int, path: str, filename: str, mtime: float, size_bytes: int, chash: str):

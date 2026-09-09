@@ -403,7 +403,7 @@ function HiDrivePanel({ showToast }) {
                   <span style={{ fontSize: '0.65rem', padding: '0.15rem 0.4rem', borderRadius: '6px', background: 'rgba(168,85,247,0.12)', color: 'var(--accent-purple)', border: '1px solid rgba(168,85,247,0.2)', fontFamily: 'var(--font-mono)' }}>HiDrive</span>
                   <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.45rem', borderRadius: '6px', background: s.last_status?.startsWith('ok') ? 'rgba(126,231,135,0.1)' : s.last_status ? 'rgba(255,166,87,0.1)' : 'rgba(255,255,255,0.05)', color: s.last_status?.startsWith('ok') ? 'var(--accent-green)' : s.last_status ? '#ffa657' : 'var(--text-secondary)', border: `1px solid ${s.last_status?.startsWith('ok') ? 'rgba(126,231,135,0.2)' : 'var(--border-glass)'}`, fontFamily: 'var(--font-mono)' }}>{s.last_status || 'mai sincronizzato'}</span>
                 </div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '0.25rem', wordBreak: 'break-all' }}>hidrive:{s.remote_path}</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '0.25rem', wordBreak: 'break-all' }}>hidrive:{s.remote_path} · 🔄 {tr('folders.hidriveAutoEvery')} {s.sync_interval_minutes || 60} min</div>
                 {s.last_sync && <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>{tr('folders.lastSync')}: {new Date(s.last_sync).toLocaleString(lang === 'de' ? 'de-DE' : lang === 'en' ? 'en-US' : 'it-IT')}</div>}
               </div>
               <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>

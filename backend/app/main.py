@@ -31,6 +31,13 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[WARN] prewarm fallito: {e}")
 
+    # auto-sync HiDrive in background (come scheduler Clumoove, tick 60s)
+    try:
+        from app.utils.auto_sync import start_auto_sync
+        start_auto_sync()
+    except Exception as e:
+        print(f"[WARN] auto-sync non avviato: {e}")
+
     # parte in background, l'app è già pronta a rispondere a /health
     prewarm_task = asyncio.create_task(_bg_prewarm())
     try:
