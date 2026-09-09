@@ -257,6 +257,11 @@ function HiDrivePanel({ showToast }) {
         return;
       }
       showToast?.(tr('folders.hidriveNeedCode'), 'info');
+      // fallback sempre visibile: link + incolla-code (se il popup dà errore redirect_uri)
+      try {
+        const fb = await hidriveApi.connect(null);
+        if (fb.data.status === 'need_code' && fb.data.authorize_url) setAuthUrl(fb.data.authorize_url);
+      } catch {}
       const onMsg = async (ev) => {
         if (ev.origin !== 'https://migration.mikweb.eu' && ev.origin !== window.location.origin) return;
         if (!ev.data || ev.data.hidrive !== 'connected') return;
