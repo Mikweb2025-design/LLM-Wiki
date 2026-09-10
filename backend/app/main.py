@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
 from app.utils.database import init_db
-from app.routers import chat, documents, voice, status, analytics, webdav, hidrive
+from app.routers import chat, documents, voice, status, analytics, webdav, hidrive, auth
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +68,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ---------------------------------------------------------------------------
+# Auth pagina /dok/: login singolo via POST /api/auth/login (token HMAC Bearer).
+# Aperte: /, /health, /api/auth/login, /docs, /openapi.json.
+# Tutto il resto (/api/*, /health/full, /metrics) richiede Bearer valido.
+# ---------------------------------------------------------------------------
+from fastapi.responses import JSONResponse as _JSONResponse
+_AUTH_OPEN = {"/", "/health", "/api/auth/login", "/docs", "/openapi.json", "/redoc"}
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+    if path in _AUTH_OPEN or path.startswith("/docs") or path.startswith("/redoc"):
+        return await call_next(request)
+    needs = path.startswith("/api/") or path in ("/health/full", "/metrics")
+    if not needs:
+        return await call_next(request)
+    token = ""
+    ah = request.headers.get("authorization", "")
+    if ah.lower().startswith("bearer "):
+        token = ah[7:].strip()
+    if token:
+        try:
+            from app.utils.auth import verify_token as _vt
+            if _vt(token):
+                return await call_next(request)
+        except Exception:
+            pass
+    return _JSONResponse(status_code=401, content={"detail": "Non autenticato"})
+
 # Compressione: riduce molto le risposte JSON grandi (es. lista documenti, search)
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
@@ -96,6 +126,7 @@ app.include_router(status.router)
 app.include_router(analytics.router)
 app.include_router(webdav.router)
 app.include_router(hidrive.router)
+app.include_router(auth.router)
 
 
 @app.get("/")

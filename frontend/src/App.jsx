@@ -8,6 +8,8 @@ import DiagnosticPanel from './components/DiagnosticPanel';
 import { I18nContext, getInitialLang, t } from './utils/i18n';
 import { LANGS } from './utils/i18n';
 import './index.css';
+import Login from './components/Login';
+import { checkMe, getToken, logout } from './utils/auth';
 
 // Heavy tabs — code-split per ridurre bundle iniziale (~138k -> ~95k)
 const SearchWithFilters = lazy(() => import('./components/SearchWithFilters'));
@@ -25,6 +27,20 @@ function App() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [lang, setLang] = useState(getInitialLang());
   const { toasts, addToast, removeToast } = useNotifications();
+  const [authed, setAuthed] = useState(() => { try { return !!localStorage.getItem('llmwiki_token'); } catch { return false; } });
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!getToken()) { if (alive) { setAuthed(false); setAuthLoading(false); } return; }
+      const me = await checkMe();
+      if (alive) { setAuthed(!!me); setAuthLoading(false); }
+    })();
+    const onUnauth = () => { setAuthed(false); };
+    window.addEventListener('llmwiki:unauth', onUnauth);
+    return () => { alive = false; window.removeEventListener('llmwiki:unauth', onUnauth); };
+  }, []);
   // Lo stato online/offline è ora gestito da <DiagnosticPanel /> che fa polling
   // su /health/full ogni 15s e mostra anche il dettaglio per componente.
 
@@ -118,6 +134,13 @@ function App() {
     setLang(code);
     try { localStorage.setItem('llmwiki_lang', code); } catch {}
   };
+
+  if (authLoading) {
+    return (<div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)' }}><div style={{ width: '32px', height: '32px', border: '3px solid rgba(255,108,0,0.15)', borderTop: '3px solid #ff6c00', borderRadius: '50%', animation: 'spin 0.9s linear infinite' }} /></div>);
+  }
+  if (!authed) {
+    return (<I18nContext.Provider value={{ lang, setLang: handleLangChange, t }}><Login lang={lang} onOk={() => setAuthed(true)} /></I18nContext.Provider>);
+  }
 
   return (
     <I18nContext.Provider value={{ lang, setLang: handleLangChange, t }}>
@@ -265,6 +288,15 @@ function App() {
           </div>
 
           <DiagnosticPanel />
+          <button
+            onClick={() => logout()}
+            title="Esci"
+            style={{ background: 'var(--bg-glass)', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', padding: '0.35rem 0.75rem', borderRadius: '10px', cursor: 'pointer', fontSize: '0.85rem', transition: 'all 0.3s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = '#c25700'; e.currentTarget.style.borderColor = 'rgba(255,108,0,0.4)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.borderColor = 'var(--border-glass)'; }}
+          >
+            ⏻ Esci
+          </button>
 
           <button
             onClick={() => setShowShortcuts(true)}

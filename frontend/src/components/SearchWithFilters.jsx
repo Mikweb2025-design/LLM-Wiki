@@ -1,5 +1,6 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { documentsApi } from '../utils/api';
+import { tagColor } from './DocumentList';
 import { useI18n, t } from '../utils/i18n';
 
 // debounce helper (300ms) — evita di spammare /search ad ogni tasto
@@ -16,11 +17,27 @@ function SearchWithFilters() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({ type: 'all', sizeRange: 'all' });
+  const [filters, setFilters] = useState({ type: 'all', sizeRange: 'all', tag: 'all' });
   const [sortBy, setSortBy] = useState('score');
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [docContent, setDocContent] = useState('');
   const [loadingContent, setLoadingContent] = useState(false);
+  const [tagsMap, setTagsMap] = useState({});
+  const tagsRef = useRef({});
+
+  useEffect(() => {
+    documentsApi.tagsMap().then(r => {
+      const m = r.data.map || {};
+      tagsRef.current = m;
+      setTagsMap(m);
+    }).catch(() => {});
+  }, []);
+
+  const availableTags = useMemo(() => {
+    const s = new Set();
+    Object.values(tagsMap).forEach(arr => (arr || []).forEach(t => s.add(t)));
+    return Array.from(s).sort();
+  }, [tagsMap]);
 
   const handleSearch = async (q = query) => {
     const term = (typeof q === 'string' ? q : query).trim();
@@ -42,6 +59,13 @@ function SearchWithFilters() {
         });
       } else if (filters.sizeRange === 'large') {
         filtered = filtered.filter(d => (d.size_bytes || 0) >= 10 * 1024 * 1024);
+      }
+      if (filters.tag !== 'all') {
+        const tm = tagsRef.current;
+        filtered = filtered.filter(d => {
+          const fn = d.metadata?.filename || d.filename;
+          return (tm[fn] || []).includes(filters.tag);
+        });
       }
       filtered.sort((a, b) => {
         if (sortBy === 'score') return (b.score || 0) - (a.score || 0);
@@ -160,6 +184,20 @@ function SearchWithFilters() {
         </select>
 
         <select
+          value={filters.tag} onChange={(e) => setFilters({...filters, tag: e.target.value})}
+          style={{
+            background: 'var(--bg-glass)', border: '1px solid var(--border-glass)',
+            borderRadius: '10px', padding: '0.6rem 0.8rem', color: 'var(--text-primary)',
+            fontSize: '0.85rem', fontFamily: 'var(--font-sans)', cursor: 'pointer', outline: 'none',
+          }}
+        >
+          <option value="all">🏷️ {tr('search.allTags')}</option>
+          {availableTags.map(t => (
+            <option key={t} value={t}>🏷️ {t}</option>
+          ))}
+        </select>
+
+        <select
           value={sortBy} onChange={(e) => setSortBy(e.target.value)}
           style={{
             background: 'var(--bg-glass)', border: '1px solid var(--border-glass)',
@@ -172,7 +210,7 @@ function SearchWithFilters() {
         </select>
 
         <button
-          onClick={() => setFilters({type: 'all', sizeRange: 'all'})}
+          onClick={() => setFilters({type: 'all', sizeRange: 'all', tag: 'all'})}
           style={{
             background: 'var(--bg-glass)', border: '1px solid var(--border-glass)',
             borderRadius: '10px', padding: '0.6rem 0.8rem', color: 'var(--text-secondary)',
@@ -226,6 +264,13 @@ function SearchWithFilters() {
                       <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontFamily: 'var(--font-mono)', marginTop: '0.2rem' }}>
                         {doc.metadata?.extension?.toUpperCase() || 'FILE'} • {tr('search.score')}: {doc.score?.toFixed(2)}
                       </p>
+                      {((tagsRef.current[doc.metadata?.filename || doc.filename]) || []).length > 0 && (
+                        <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
+                          {(tagsRef.current[doc.metadata?.filename || doc.filename] || []).map(tag => (
+                            <span key={tag} style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '6px', background: tagColor(tag)[0], color: tagColor(tag)[1], border: '1px solid var(--border-glass)', fontFamily: 'var(--font-mono)' }}>{tag}</span>
+                          ))}
+                        </div>
+                      )}
                       {/* Content preview */}
                       <p style={{
                         color: 'var(--text-secondary)', fontSize: '0.8rem', lineHeight: 1.5,

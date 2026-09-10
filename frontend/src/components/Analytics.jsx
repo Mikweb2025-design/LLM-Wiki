@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { documentsApi } from '../utils/api';
+import { documentsApi, analyticsApi } from '../utils/api';
 import { useI18n, t } from '../utils/i18n';
-
-const API = 'http://127.0.0.1:8000';
 
 // Minimal SVG Bar/Line chart senza dipendenze esterne
 function BarChart({ data, color = 'var(--accent-blue)' }) {
@@ -112,7 +110,7 @@ export default function Analytics({ showToast }) {
 
   useEffect(()=>{
     documentsApi.list({limit:100}).then(r=>setDocs(r.data||[])).catch(()=>{});
-    fetch(`${API}/api/analytics/presets`).then(r=>r.json()).then(d=>setPresets(d.presets||{})).catch(()=>{});
+    analyticsApi.presets().then(d=>setPresets(d.data.presets||{})).catch(()=>{});
   },[]);
 
   const toggle = (f) => setSelected(prev=>{
@@ -139,12 +137,8 @@ export default function Analytics({ showToast }) {
         custom_fields: preset==='custom' ? customFields.split(',').map(s=>s.trim()).filter(Boolean) : undefined,
         custom_prompt: customPrompt || undefined,
       };
-      const res = await fetch(`${API}/api/analytics/aggregate`, {
-        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
-      });
-      const text = await res.text();
-      if(!res.ok) throw new Error(text.slice(0,400));
-      const data = JSON.parse(text);
+      const res = await analyticsApi.aggregate(payload);
+      const data = res.data;
       setResult(data);
       // Avvisa se dati deboli (Senza data / zero)
       const weak = data.chart_data.length===1 && data.chart_data[0]?.label==='Senza data';

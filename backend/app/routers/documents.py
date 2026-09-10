@@ -1006,7 +1006,7 @@ async def auto_tag_all_documents(force: bool = False):
         if not force:
             try:
                 existing = get_document_tags(fname)
-                if existing and "altro" not in existing:
+                if existing and "general" not in existing:
                     skipped += 1
                     continue
             except: pass

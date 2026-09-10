@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { documentsApi, API_URL } from '../utils/api';
+import { documentsApi } from '../utils/api';
 import { useI18n, t } from '../utils/i18n';
 
 function FilePreview({ filename, onClose }) {
@@ -16,16 +16,22 @@ function FilePreview({ filename, onClose }) {
     const ext = filename.split('.').pop().toLowerCase();
     setType(ext);
 
-    // Images and PDF: serve the file directly (preview endpoint returns FileResponse)
+    // Images and PDF: fetch con token -> blob URL (l'endpoint richiede Bearer)
     if (['png', 'jpg', 'jpeg', 'bmp', 'tiff'].includes(ext) || ext === 'pdf') {
-      setContent(`${API_URL}/api/documents/preview/${encodeURIComponent(filename)}`);
-      setLoading(false);
+      try {
+        const response = await documentsApi.previewBlob(filename);
+        const url = URL.createObjectURL(response.data);
+        setContent(url);
+      } catch (e) {
+        setContent(tr('preview.loadError'));
+      } finally {
+        setLoading(false);
+      }
     } else {
       // Text files: get JSON with content
       try {
-        const response = await fetch(`${API_URL}/api/documents/content/${encodeURIComponent(filename)}`);
-        const data = await response.json();
-        setContent(data.content || tr('preview.noContent'));
+        const response = await documentsApi.content(filename);
+        setContent(response.data.content || tr('preview.noContent'));
       } catch (e) {
         setContent(tr('preview.loadError'));
       } finally {
@@ -33,6 +39,15 @@ function FilePreview({ filename, onClose }) {
       }
     }
   };
+
+  // revoca blob URL alla chiusura / cambio file
+  useEffect(() => {
+    return () => {
+      if (content && content.startsWith('blob:')) {
+        try { URL.revokeObjectURL(content); } catch {}
+      }
+    };
+  }, [content]);
 
   const getFileIcon = () => {
     const ext = type;

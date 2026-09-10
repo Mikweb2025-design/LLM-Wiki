@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { webdavApi, hidriveApi } from '../utils/api';
+import api, { webdavApi, hidriveApi } from '../utils/api';
 import { useI18n, t } from '../utils/i18n';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 function WebDAVPanel({ showToast }) {
   const { lang } = useI18n(); const tr = p => t(lang, p);
@@ -493,11 +491,12 @@ export default function Folders({ showToast }) {
 
   const loadFolders = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/documents/folders`);
-      const data = await res.json();
-      setFolders(data || []);
+      const res = await api.get('/api/documents/folders');
+      const data = res.data;
+      setFolders(Array.isArray(data) ? data : (Array.isArray(data?.folders) ? data.folders : []));
     } catch (err) {
       console.error('Errore caricamento cartelle:', err);
+      setFolders([]);
     } finally {
       setLoading(false);
     }
@@ -509,32 +508,21 @@ export default function Folders({ showToast }) {
       return;
     }
     try {
-      const res = await fetch(`${API_URL}/api/documents/folders`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: newFolderPath, name: newFolderName || newFolderPath.split('/').pop() })
-      });
-      if (res.ok) {
-        showToast?.(tr('folders.added'), 'success');
-        setNewFolderPath(''); setNewFolderName('');
-        loadFolders();
-      } else {
-        const data = await res.json();
-        showToast?.(data.detail || tr('common.error'), 'error');
-      }
+      await api.post('/api/documents/folders', { path: newFolderPath, name: newFolderName || newFolderPath.split('/').pop() });
+      showToast?.(tr('folders.added'), 'success');
+      setNewFolderPath(''); setNewFolderName('');
+      loadFolders();
     } catch (err) {
-      showToast?.(`${tr('common.error')}: ` + err.message, 'error');
+      showToast?.(err.response?.data?.detail || tr('common.error'), 'error');
     }
   };
 
   const removeFolder = async (name) => {
     if (!confirm(`${tr('folders.confirmRemove')} "${name}"?`)) return;
     try {
-      const res = await fetch(`${API_URL}/api/documents/folders/${name}`, { method: 'DELETE' });
-      if (res.ok) {
-        showToast?.(tr('common.remove'), 'success');
-        loadFolders();
-      }
+      await api.delete(`/api/documents/folders/${name}`);
+      showToast?.(tr('common.remove'), 'success');
+      loadFolders();
     } catch (err) {
       showToast?.(`${tr('common.error')}: ` + err.message, 'error');
     }
@@ -545,8 +533,8 @@ export default function Folders({ showToast }) {
     const maxAttempts = 600;
     const poll = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/documents/scan-status`);
-        const s = await res.json();
+        const res = await api.get('/api/documents/scan-status');
+        const s = res.data;
         if (s.total_files > 0) {
           setScanProgress({ processed: s.processed, total: s.total_files, pct: s.progress_pct, newFiles: s.new_files });
         }
@@ -572,8 +560,7 @@ export default function Folders({ showToast }) {
   const scanFolder = async (name) => {
     setScanning(name);
     try {
-      const res = await fetch(`${API_URL}/api/documents/folders/${name}/scan`, { method: 'POST' });
-      const data = await res.json();
+      await api.post(`/api/documents/folders/${name}/scan`);
       showToast?.(`${tr('folders.scan')}...`, 'info');
       pollScanStatus(() => setScanning(null));
     } catch (err) {

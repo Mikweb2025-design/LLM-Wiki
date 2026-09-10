@@ -1,6 +1,33 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { documentsApi, API_URL } from '../utils/api';
+import { documentsApi } from '../utils/api';
 import { useI18n, t } from '../utils/i18n';
+
+// un colore per tag: [sfondo, testo]
+export const TAG_COLORS = {
+  invoice: ['rgba(74,158,255,0.12)', '#2563eb'],
+  payslip: ['rgba(34,197,94,0.12)', '#16a34a'],
+  contract: ['rgba(255,108,0,0.12)', '#ea580c'],
+  insurance: ['rgba(20,184,166,0.12)', '#0d9488'],
+  utilities: ['rgba(234,179,8,0.14)', '#a16207'],
+  identity: ['rgba(168,85,247,0.12)', '#9333ea'],
+  medical: ['rgba(244,63,94,0.12)', '#e11d48'],
+  legal: ['rgba(120,113,108,0.14)', '#57534e'],
+  form: ['rgba(6,182,212,0.12)', '#0891b2'],
+  finance: ['rgba(16,185,129,0.12)', '#059669'],
+  ai: ['rgba(139,92,246,0.12)', '#7c3aed'],
+  cloud: ['rgba(14,165,233,0.12)', '#0284c7'],
+  energy: ['rgba(250,204,21,0.16)', '#b45309'],
+  cooking: ['rgba(239,68,68,0.12)', '#dc2626'],
+  travel: ['rgba(45,212,191,0.14)', '#0f766e'],
+  security: ['rgba(185,28,28,0.10)', '#991b1b'],
+  history: ['rgba(180,83,9,0.12)', '#92400e'],
+  devops: ['rgba(99,102,241,0.12)', '#4f46e5'],
+  health: ['rgba(236,72,153,0.12)', '#db2777'],
+  photo: ['rgba(100,116,139,0.14)', '#475569'],
+  general: ['rgba(31,41,55,0.06)', 'var(--text-secondary)'],
+};
+const tagColor = (tag) => TAG_COLORS[tag] || TAG_COLORS.general;
+export { tagColor };
 
 function DocumentList({ showToast }) {
   const { lang } = useI18n(); const tr = p => t(lang,p);
@@ -36,9 +63,8 @@ function DocumentList({ showToast }) {
 
   const fetchTagsMap = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/documents/tags/map`);
-      const data = await res.json();
-      setTagsMap(data.map || {});
+      const res = await documentsApi.tagsMap();
+      setTagsMap(res.data.map || {});
     } catch {}
   };
 
@@ -58,11 +84,11 @@ function DocumentList({ showToast }) {
   const handleAutoTagAll = async () => {
     try {
       showToast?.(tr('documents.autoTagProgress'),'info');
-      const res = await fetch(`${API_URL}/api/documents/auto-tag/all`, { method: 'POST' });
-      const data = await res.json();
+      const res = await documentsApi.autoTagAll();
+      const data = res.data;
       showToast?.(`${tr('documents.autoTagResult')} ${data.tagged} ${tr('documents.of').toLowerCase()} ${data.tagged + data.skipped}, ${data.skipped} ${tr('common.success').toLowerCase()}`, 'success');
       fetchTagsMap();
-    } catch(e){ showToast?.(`${tr('common.error')}: `+e.message,'error'); }
+    } catch(e){ showToast?.(`${tr('common.error')}: `+(e.response?.data?.detail || e.message),'error'); }
   };
 
   const pollScanStatus = async (onDone) => {
@@ -714,7 +740,7 @@ function DocumentList({ showToast }) {
                   {(tagsMap[doc.filename]||[]).length>0 && (
                     <div style={{ display:'flex', gap:'0.3rem', marginTop:'0.3rem', flexWrap:'wrap' }}>
                       {(tagsMap[doc.filename]||[]).map(tag=>(
-                        <span key={tag} style={{ fontSize:'0.65rem', padding:'0.1rem 0.4rem', borderRadius:'6px', background: tag==='fattura'?'rgba(74,158,255,0.12)':tag==='stipendio'?'rgba(126,231,135,0.12)':tag==='contratto'?'rgba(255,108,0,0.12)':'rgba(31,41,55,0.06)', color: tag==='fattura'?'var(--accent-blue)':tag==='stipendio'?'var(--accent-green)':tag==='contratto'?'var(--accent-purple)':'var(--text-secondary)', border:'1px solid var(--border-glass)', fontFamily:'var(--font-mono)' }}>{tag}</span>
+                        <span key={tag} style={{ fontSize:'0.65rem', padding:'0.1rem 0.4rem', borderRadius:'6px', background: tagColor(tag)[0], color: tagColor(tag)[1], border:'1px solid var(--border-glass)', fontFamily:'var(--font-mono)' }}>{tag}</span>
                       ))}
                     </div>
                   )}

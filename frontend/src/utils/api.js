@@ -7,6 +7,26 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+// Auth pagina /dok/: token Bearer da login (localStorage llmwiki_token)
+api.interceptors.request.use((cfg) => {
+  try {
+    const t = localStorage.getItem('llmwiki_token');
+    if (t) { cfg.headers = cfg.headers || {}; cfg.headers.Authorization = `Bearer ${t}`; }
+  } catch {}
+  return cfg;
+});
+api.interceptors.response.use(
+  (r) => r,
+  (e) => {
+    if (e?.response?.status === 401 && typeof window !== 'undefined' && !window.location.hash.includes('login')) {
+      try { localStorage.removeItem('llmwiki_token'); } catch {}
+      if (!String(window.location.pathname).includes('/dok')) window.location.reload();
+      else window.dispatchEvent(new Event('llmwiki:unauth'));
+    }
+    return Promise.reject(e);
+  }
+);
+
 export const chatApi = {
   sendMessage: (message, history = [], model = null, lang = 'it') =>
     api.post('/api/chat/', { message, history, model, lang }),
@@ -18,9 +38,10 @@ export const chatApi = {
     else if (typeof onTokenOrDone === 'function' && typeof onDoneMaybe === 'function') { lang=langOrToken||'it'; onToken=onTokenOrDone; onDone=onDoneMaybe; }
     else if (typeof langOrToken === 'string') { lang=langOrToken||'it'; onToken=onTokenOrDone; onDone=onDoneMaybe; }
     else { lang='it'; onToken=langOrToken; onDone=onTokenOrDone; }
+    const _tok = (() => { try { return localStorage.getItem('llmwiki_token') || ''; } catch { return ''; } })();
     const res = await fetch(`${API_URL}/api/chat/stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(_tok ? { Authorization: `Bearer ${_tok}` } : {}) },
       body: JSON.stringify({ message, history, model, lang }),
     });
     if (!res.ok) throw new Error(`Stream failed ${res.status}`);
@@ -90,6 +111,15 @@ export const documentsApi = {
   removeTag: (filename, tag) => api.delete(`/api/documents/${encodeURIComponent(filename)}/tags/${encodeURIComponent(tag)}`),
   getFavorites: () => api.get('/api/documents/favorites/list'),
   toggleFavorite: (filename) => api.post(`/api/documents/${encodeURIComponent(filename)}/favorite`),
+  tagsMap: () => api.get('/api/documents/tags/map'),
+  autoTagAll: () => api.post('/api/documents/auto-tag/all'),
+  autoTagOne: (filename) => api.post(`/api/documents/auto-tag/${encodeURIComponent(filename)}`),
+  previewBlob: (filename) => api.get(`/api/documents/preview/${encodeURIComponent(filename)}`, { responseType: 'blob' }),
+};
+
+export const analyticsApi = {
+  presets: () => api.get('/api/analytics/presets'),
+  aggregate: (payload) => api.post('/api/analytics/aggregate', payload),
 };
 
 export const statusApi = {

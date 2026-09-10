@@ -1,97 +1,158 @@
-"""Auto-tagging intelligente per documenti — keyword + euristica estensione."""
+"""Auto-tagging per documenti — keyword trilingue (EN/IT/DE) → tag sempre in inglese.
+
+Scoring: ogni keyword contribuisce con le sue occorrenze (cap 5);
+hit nel filename vale +3. Brevi (<=5 char) solo su parola intera
+per evitare falsi positivi ('iva' in 'generativa'). Si tengono i tag
+con score >= 2 (top 3); se nessuno raggiunge la soglia → ['general'].
+"""
 import re
 from pathlib import Path
 from typing import List
 
-# Mappa tag → parole chiave (lowercase). Se una parola è nel filename o nei primi 3000 char, assegna tag.
+# Tag EN → keyword EN/IT/DE (lowercase).
 TAG_KEYWORDS = {
-    "fattura": [
-        "fattura", "invoice", "rechnung", "quittung", "beleg", "receipt",
+    # --- amministrativi ---
+    "invoice": [
+        "fattura", "invoice", "rechnung", "quittung", "receipt",
         "importo", "totale", "betrag", "iva", "vat", "mwst", "netto", "brutto",
-        "remuneration", "entgelt", "payroll",
     ],
-    "stipendio": [
-        "stipendio", "busta paga", "busta", "payslip", "remuneration", "entgelt",
-        "gehalt", "lohn", "salary", "verdien", "pay statement", "lohnabrechnung",
+    "payslip": [
+        "stipendio", "busta paga", "payslip", "remuneration", "entgelt",
+        "gehalt", "lohn", "salary", "verdienst", "pay statement", "lohnabrechnung",
     ],
-    "contratto": [
-        "contratto", "vertrag", "agreement", "auftrag", "auftragsbestätigung",
-        "kündigung", "cancellation", "widerruf", "muster", "schreiben",
+    "contract": [
+        "contratto", "contratti", "vertrag", "vertrags", "agreement",
+        "auftrag", "cancellation",
     ],
-    "assicurazione": [
-        "versicherung", "assicurazione", "insurance", "kfz", "haftpflicht",
-        "polizza", "policy", "kdg", "kdg+v",
+    "insurance": [
+        "versicherung", "assicurazione", "insurance", "haftpflicht",
+        "polizza", "policy",
     ],
-    "bolletta": [
-        "bolletta", "rechnung", "vattenfall", "strom", "gas", "wasser", "stromrechnung",
-        "utenze", "utilities", "bill",
+    "utilities": [
+        "bolletta", "utenze", "utilities", "bill", "vattenfall",
+        "strom", "gas", "wasser", "stromrechnung",
     ],
-    "identità": [
-        "carta d'identità", "identità", "ausweis", "passport", "id", "personalausweis",
-        "identita", "documento identità", "cie",
+    "identity": [
+        "identità", "identita", "identity", "ausweis", "passport",
+        "personalausweis", "cie", "id card",
     ],
-    "medico": [
-        "sterbeurkunde", "kindkrank", "arzt", "medico", "salute", "health", "krank",
-        "bescheinigung", "attest", "ricetta", "rezept", "logopäd",
+    "medical": [
+        "medico", "doctor", "arzt", "krankenhaus", "hospital", "paziente",
+        "patient", "terapia", "therapy", "diagnosi", "diagnosis", "ricetta",
+        "rezept", "ospedale",
     ],
-    "legale": [
-        "widerruf", "widerspruch", "kündigung", "avvocato", "legal", "anwalt", "gericht",
-        "musterschreiben",
+    "legal": [
+        "avvocato", "legal", "lawyer", "anwalt", "gericht", "court",
+        "tribunale", "widerspruch", "legge",
     ],
-    "modulo": [
-        "antrag", "formular", "modulo", "antragstellung", "anmeldung",
+    "form": [
+        "antrag", "formular", "modulo", "module", "form",
+        "antragstellung", "anmeldung",
     ],
-    "foto": [
+    "finance": [
+        "fatturazione", "contabilità", "accounting", "bilancio", "budget",
+        "tasse", "fisco", "commercialista", "interscambio", "scadenza",
+    ],
+    # --- temi ---
+    "ai": [
+        "intelligenza artificiale", "artificial intelligence", "llm",
+        "language model", "modello linguistico", "machine learning",
+        "embedding", "retrieval", "chatbot", "neural", "neurale",
+        "allucinazioni", "prompt",
+    ],
+    "cloud": [
+        "cloud", "hidrive", "nextcloud", "webdav", "storage", "sync",
+        "sincronizzazione", "datacenter", "data center",
+    ],
+    "energy": [
+        "fotovoltaico", "solar", "solare", "pannelli", "inverter",
+        "batteria", "batterie", "accumulo", "kilowatt", "rinnovabile",
+        "renewable", "pompa di calore", "incentivi",
+    ],
+    "cooking": [
+        "cucina", "ricette", "recipe", "speck", "canederli", "strudel",
+        "ingredienti", "forno", "impasto", "cuoco", "ristorante",
+    ],
+    "travel": [
+        "dolomiti", "trekking", "hiking", "rifugio", "montagna", "mountain",
+        "escursione", "sentiero", "ferrata", "unesco", "viaggio", "turismo",
+        "alpi", "vita naturalistica",
+    ],
+    "security": [
+        "cybersecurity", "sicurezza informatica", "phishing", "ransomware",
+        "password", "firewall", "malware", "hacker", "vulnerab",
+        "antivirus", "backup", "crittografia", "encryption",
+    ],
+    "history": [
+        "storia", "history", "impero", "empire", "roma", "rome", "antico",
+        "ancient", "secolo", "century", "medioevo", "repubblica",
+    ],
+    "devops": [
+        "docker", "container", "kubernetes", "self-hosting", "homelab",
+        "compose", "linux", "server", "infrastruttura", "deployment",
+    ],
+    "health": [
+        "sonno", "sleep", "salute", "health", "benessere", "wellness",
+        "stress", "melatonina", "insonnia", "insomnia",
+    ],
+    "photo": [
         ".png", ".jpg", ".jpeg", ".webp", ".tiff", ".bmp",
     ],
 }
 
 # Tag prioritari per UI (ordinati)
-TAG_PRIORITY = ["fattura", "stipendio", "contratto", "assicurazione", "bolletta", "medico", "identità", "legale", "modulo", "foto", "altro"]
+TAG_PRIORITY = [
+    "invoice", "payslip", "contract", "insurance", "utilities",
+    "identity", "medical", "legal", "form", "finance",
+    "ai", "cloud", "energy", "cooking", "travel",
+    "security", "history", "devops", "health", "photo", "general",
+]
+
+MIN_SCORE = 2
+MAX_TAGS = 3
 
 
-def infer_tags(filename: str, text_snippet: str = "", max_tags: int = 3) -> List[str]:
+def _kw_count(kw: str, text: str) -> int:
+    """Occorrenze di kw in text (parola intera se corta)."""
+    if len(kw) <= 5:
+        return len(re.findall(r"\b" + re.escape(kw) + r"\b", text))
+    return text.count(kw)
+
+
+def infer_tags(filename: str, text_snippet: str = "", max_tags: int = MAX_TAGS) -> List[str]:
     """
-    Ritorna lista di tag (max_tags) basata su filename + snippet.
-    Usa keyword matching case-insensitive. Se nessun match → ["altro"].
+    Ritorna tag inglesi basati su filename + snippet, con scoring a frequenza.
+    Se nessun tag raggiunge la soglia → ['general'] (mai 'altro').
     """
     haystack = f"{filename} {text_snippet}".lower()
-    # normalizza estensione per tag foto
+    fname = filename.lower()
     ext = Path(filename).suffix.lower()
     scores = {}
     for tag, keywords in TAG_KEYWORDS.items():
-        # foto tag solo su estensione
-        if tag == "foto":
+        # photo solo su estensione
+        if tag == "photo":
             if ext in keywords:
                 scores[tag] = 10
             continue
-        count = 0
+        total = 0
         for kw in keywords:
-            # per keyword multi-parola usa substring semplice
-            if kw in haystack:
-                # peso maggiore se nel filename
-                if kw in filename.lower():
-                    count += 2
-                else:
-                    count += 1
-        if count > 0:
-            scores[tag] = count
+            c = _kw_count(kw, haystack)
+            if c:
+                total += min(c, 5)
+                if _kw_count(kw, fname):
+                    total += 3
+        if total >= MIN_SCORE:
+            scores[tag] = total
 
     if not scores:
-        return ["altro"]
+        return ["general"]
 
     # ordina per score desc, poi priorità
-    sorted_tags = sorted(scores.keys(), key=lambda t: (-scores[t], TAG_PRIORITY.index(t) if t in TAG_PRIORITY else 99))
-    # se più tag con stesso score alto, prendi top 2-3
-    result = sorted_tags[:max_tags]
-    # se "fattura" e "stipendio" entrambi → preferisci stipendio se filename contiene remuneration/entgelt
-    if "fattura" in result and "stipendio" in result:
-        low = filename.lower()
-        if any(k in low for k in ["remuneration", "entgelt", "stipendio", "gehalt", "lohn"]):
-            # mantieni stipendio, rimuovi fattura se troppi
-            if len(result) > 2 and result[0] == "fattura":
-                result.remove("fattura")
-    return result
+    ranked = sorted(
+        scores.keys(),
+        key=lambda t: (-scores[t], TAG_PRIORITY.index(t) if t in TAG_PRIORITY else 99),
+    )
+    return ranked[:max_tags]
 
 
 def auto_tag_document(filename: str, file_path: str = None) -> List[str]:
@@ -102,11 +163,11 @@ def auto_tag_document(filename: str, file_path: str = None) -> List[str]:
     from app.utils.document_processor import process_document
     from app.utils.database import add_tag, get_document_tags
 
-    # evita di ritaggare se già ha tag (tranne "altro")
+    # evita di ritaggare se già ha tag (tranne "general")
     existing = []
     try:
         existing = get_document_tags(filename)
-        if existing and "altro" not in existing:
+        if existing and "general" not in existing:
             # già taggato bene, non ritaggare
             return existing
     except:
