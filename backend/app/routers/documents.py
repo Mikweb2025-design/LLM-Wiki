@@ -77,6 +77,10 @@ async def upload_document(file: UploadFile = File(...)):
     """Carica un nuovo documento"""
     if not file.filename:
         raise HTTPException(status_code=400, detail="Nome file mancante")
+    # solo il nome, mai un percorso: evita scritture fuori da DOCUMENTS_DIR
+    file.filename = Path(file.filename.replace("\\", "/")).name
+    if file.filename in ("", ".", ".."):
+        raise HTTPException(status_code=400, detail="Nome file non valido")
 
     # Check file size
     file.file.seek(0, 2)
